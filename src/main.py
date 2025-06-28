@@ -69,20 +69,23 @@ def get_resume_adaptive(cfg, model_kwargs):
 def main(cfg: DictConfig):
     dataset_config = cfg["dataset"]
 
-    if dataset_config["name"] in ['sbm', 'comm20', 'planar']:
+    if dataset_config["name"] in ['sbm', 'comm20', 'planar','famipacking']:
+        from datasets.famipacking_dataset import FamipackingGraphDataModule, FamipackingDatasetInfo
         from datasets.spectre_dataset import SpectreGraphDataModule, SpectreDatasetInfos
-        from analysis.spectre_utils import PlanarSamplingMetrics, SBMSamplingMetrics, Comm20SamplingMetrics
+        from analysis.spectre_utils import FamipackingSamplingMetrics, PlanarSamplingMetrics, SBMSamplingMetrics, Comm20SamplingMetrics
         from analysis.visualization import NonMolecularVisualization
 
-        datamodule = SpectreGraphDataModule(cfg)
-        if dataset_config['name'] == 'sbm':
+        datamodule = FamipackingGraphDataModule(cfg)
+        if dataset_config['name'] == 'famipacking':
+            sampling_metrics = FamipackingSamplingMetrics(datamodule)
+        elif dataset_config['name'] == 'sbm':
             sampling_metrics = SBMSamplingMetrics(datamodule)
         elif dataset_config['name'] == 'comm20':
             sampling_metrics = Comm20SamplingMetrics(datamodule)
         else:
             sampling_metrics = PlanarSamplingMetrics(datamodule)
 
-        dataset_infos = SpectreDatasetInfos(datamodule, dataset_config)
+        dataset_infos = FamipackingDatasetInfo(datamodule, dataset_config)
         train_metrics = TrainAbstractMetricsDiscrete() if cfg.model.type == 'discrete' else TrainAbstractMetrics()
         visualization_tools = NonMolecularVisualization()
 
