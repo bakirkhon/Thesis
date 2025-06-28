@@ -314,7 +314,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         Qtb = self.transition_model.get_Qt_bar(alpha_t_bar, self.device)
 
         # Compute transition probabilities
-        probX = X @ Qtb.X  # (bs, n, dx_out)
+        probX = X # No noise on X
         probE = E @ Qtb.E.unsqueeze(1)  # (bs, n, n, de_out)
         assert probX.shape == X.shape
 
@@ -361,7 +361,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
                                                                                                 pred_X=prob_pred.X,
                                                                                                 pred_E=prob_pred.E,
                                                                                                 node_mask=node_mask)
-        kl_x = (self.test_X_kl if test else self.val_X_kl)(prob_true.X, torch.log(prob_pred.X))
+        kl_x = 0 # (self.test_X_kl if test else self.val_X_kl)(prob_true.X, torch.log(prob_pred.X))
         kl_e = (self.test_E_kl if test else self.val_E_kl)(prob_true.E, torch.log(prob_pred.E))
         return self.T * (kl_x + kl_e)
 
@@ -371,7 +371,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         beta_0 = self.noise_schedule(t_zeros)
         Q0 = self.transition_model.get_Qt(beta_t=beta_0, device=self.device)
 
-        probX0 = X @ Q0.X  # (bs, n, dx_out)
+        probX0 = X # No noise on X
         probE0 = E @ Q0.E.unsqueeze(1)  # (bs, n, n, de_out)
 
         sampled0 = diffusion_utils.sample_discrete_features(probX=probX0, probE=probE0, node_mask=node_mask)
@@ -426,7 +426,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         assert (abs(Qtb.E.sum(dim=2) - 1.) < 1e-4).all()
 
         # Compute transition probabilities
-        probX = X @ Qtb.X  # (bs, n, dx_out)
+        probX = X #  No noise on X
         probE = E @ Qtb.E.unsqueeze(1)  # (bs, n, n, de_out)
 
         sampled_t = diffusion_utils.sample_discrete_features(probX=probX, probE=probE, node_mask=node_mask)
@@ -465,7 +465,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         # Compute L0 term : -log p (X, E, y | z_0) = reconstruction loss
         prob0 = self.reconstruction_logp(t, X, E, node_mask)
 
-        loss_term_0 = self.val_X_logp(X * prob0.X.log()) + self.val_E_logp(E * prob0.E.log())
+        loss_term_0 = self.val_E_logp(E * prob0.E.log()) # +self.val_X_logp(X * prob0.X.log())
 
         # Combine terms
         nlls = - log_pN + kl_prior + loss_all_t - loss_term_0
