@@ -76,11 +76,12 @@ class FamipackingGraphDataset(InMemoryDataset):
             X=graph['X']
             E=graph['E']
             n=X.shape[0]
+            y=torch.zeros([1, 0]).float()
             # first row=source nodes, second row=destination rows
             edge_index, _=torch_geometric.utils.dense_to_sparse((E.sum(-1)>0).float())
             edge_attr=E[edge_index[0],edge_index[1],:]
             num_nodes=n*torch.ones(1,dtype=torch.long)
-            data=torch_geometric.data.Data(x=X,edge_index=edge_index,edge_attr=edge_attr,n_nodes=num_nodes)
+            data=torch_geometric.data.Data(x=X,edge_index=edge_index,edge_attr=edge_attr,y=y, n_nodes=num_nodes)
             
             if self.pre_filter is not None and not self.pre_filter(data):
                 continue

@@ -69,7 +69,7 @@ def get_resume_adaptive(cfg, model_kwargs):
 def main(cfg: DictConfig):
     dataset_config = cfg["dataset"]
 
-    if dataset_config["name"] in ['sbm', 'comm20', 'planar','famipacking']:
+    if dataset_config["name"] in ['sbm', 'comm20', 'planar', 'famipacking']:
         from datasets.famipacking_dataset import FamipackingGraphDataModule, FamipackingDatasetInfo
         from datasets.spectre_dataset import SpectreGraphDataModule, SpectreDatasetInfos
         from analysis.spectre_utils import FamipackingSamplingMetrics, PlanarSamplingMetrics, SBMSamplingMetrics, Comm20SamplingMetrics
