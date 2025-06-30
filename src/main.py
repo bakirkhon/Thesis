@@ -75,7 +75,10 @@ def main(cfg: DictConfig):
         from analysis.spectre_utils import FamipackingSamplingMetrics, PlanarSamplingMetrics, SBMSamplingMetrics, Comm20SamplingMetrics
         from analysis.visualization import NonMolecularVisualization
 
-        datamodule = FamipackingGraphDataModule(cfg)
+        if dataset_config['name']=='famipacking':
+            datamodule=FamipackingGraphDataModule(cfg)
+        else:
+            datamodule=SpectreGraphDataModule(cfg)
         if dataset_config['name'] == 'famipacking':
             sampling_metrics = FamipackingSamplingMetrics(datamodule)
         elif dataset_config['name'] == 'sbm':
