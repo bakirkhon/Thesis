@@ -28,7 +28,7 @@ class FamipackingGraphDataset(InMemoryDataset):
     
     def download(self):
         if self.dataset_name=='famipacking':
-            raw_url='https://github.com/bakirkhon/Thesis/raw/main/3D-bin-packing-master/training_dataset/training_dataset.pt'
+            raw_url='https://github.com/bakirkhon/Thesis/raw/main/3D-bin-packing-master/dataset/famipacking_2048.pt'
         else:
             raise ValueError(f'Unknown dataset {self.dataset_name}')
         file_path=download_url(raw_url, self.raw_dir)
@@ -81,7 +81,7 @@ class FamipackingGraphDataset(InMemoryDataset):
             edge_index, _=torch_geometric.utils.dense_to_sparse((E.sum(-1)>0).float())
             edge_attr=E[edge_index[0],edge_index[1],:]
             num_nodes=n*torch.ones(1,dtype=torch.long)
-            data=torch_geometric.data.Data(x=X,edge_index=edge_index,edge_attr=edge_attr,y=y, n_nodes=num_nodes)
+            data=torch_geometric.data.Data(x=X, edge_index=edge_index, edge_attr=edge_attr, y=y, n_nodes=num_nodes)
             
             if self.pre_filter is not None and not self.pre_filter(data):
                 continue
@@ -89,7 +89,6 @@ class FamipackingGraphDataset(InMemoryDataset):
                 data = self.pre_transform(data)
             
             data_list.append(data)
-
         torch.save(self.collate(data_list), self.processed_paths[0])
 
 class FamipackingGraphDataModule(AbstractDataModule):
