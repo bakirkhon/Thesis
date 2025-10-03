@@ -21,7 +21,7 @@ from string import ascii_uppercase, digits
 from datetime import datetime
 from scipy.linalg import eigvalsh
 from scipy.stats import chi2
-from src.analysis.dist_helper import compute_mmd, gaussian_emd, gaussian, emd, gaussian_tv, disc
+from analysis.dist_helper import compute_mmd, gaussian_emd, gaussian, emd, gaussian_tv, disc
 from torch_geometric.utils import to_networkx
 import wandb
 

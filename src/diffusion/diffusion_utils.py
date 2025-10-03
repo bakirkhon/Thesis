@@ -236,17 +236,24 @@ def sample_discrete_features(probX, probE, node_mask):
         :param probE: bs, n, n, de_out     edge features
         :param proby: bs, dy_out           global features.
     '''
-    bs, n, _ = probX.shape
+    bs, n, _, _ = probE.shape
+    if probX is not None:
+        probX[~node_mask] = 1 / probX.shape[-1]
+        probX = probX.reshape(bs * n, -1)
+        X_t = probX.multinomial(1).reshape(bs, n)
+    else:
+        X_t = torch.zeros(bs, n, dtype=torch.float, device=node_mask.device)  # dummy, won’t be used
+
     # Noise X
     # The masked rows should define probability distributions as well
-    probX[~node_mask] = 1 / probX.shape[-1]
+    # probX[~node_mask] = 1 / probX.shape[-1]
 
-    # Flatten the probability tensor to sample with multinomial
-    probX = probX.reshape(bs * n, -1)       # (bs * n, dx_out)
+    # # Flatten the probability tensor to sample with multinomial
+    # probX = probX.reshape(bs * n, -1)       # (bs * n, dx_out)
 
-    # Sample X
-    X_t = probX.multinomial(1)                                  # (bs * n, 1)
-    X_t = X_t.reshape(bs, n)     # (bs, n)
+    # # Sample X
+    # X_t = probX.multinomial(1)                                  # (bs * n, 1)
+    # X_t = X_t.reshape(bs, n)     # (bs, n)
 
     # Noise E
     # The masked rows should define probability distributions as well
@@ -290,8 +297,8 @@ def compute_posterior_distribution(M, M_t, Qt_M, Qsb_M, Qtb_M):
     return prob
 
 
-def compute_batched_over0_posterior_distribution(X_t, Qt, Qsb, Qtb):
     """ M: X or E
+def compute_batched_over0_posterior_distribution(X_t, Qt, Qsb, Qtb):
         Compute xt @ Qt.T * x0 @ Qsb / x0 @ Qtb @ xt.T for each possible value of x0
         X_t: bs, n, dt          or bs, n, n, dt
         Qt: bs, d_t-1, dt
@@ -366,20 +373,20 @@ def posterior_distributions(X, E, y, X_t, E_t, y_t, Qt, Qsb, Qtb):
 def sample_discrete_feature_noise(limit_dist, node_mask):
     """ Sample from the limit distribution of the diffusion process"""
     bs, n_max = node_mask.shape
-    x_limit = limit_dist.X[None, None, :].expand(bs, n_max, -1)
+    #x_limit = limit_dist.X[None, None, :].expand(bs, n_max, -1)
     e_limit = limit_dist.E[None, None, None, :].expand(bs, n_max, n_max, -1)
     y_limit = limit_dist.y[None, :].expand(bs, -1)
-    U_X = x_limit.flatten(end_dim=-2).multinomial(1).reshape(bs, n_max)
+    #U_X = x_limit.flatten(end_dim=-2).multinomial(1).reshape(bs, n_max) #(bs, n_max, n_max)
     U_E = e_limit.flatten(end_dim=-2).multinomial(1).reshape(bs, n_max, n_max)
     U_y = torch.empty((bs, 0))
 
     long_mask = node_mask.long()
-    U_X = U_X.type_as(long_mask)
+    #U_X = U_X.type_as(long_mask)
     U_E = U_E.type_as(long_mask)
     U_y = U_y.type_as(long_mask)
 
-    U_X = F.one_hot(U_X, num_classes=x_limit.shape[-1]).float()
-    U_E = F.one_hot(U_E, num_classes=e_limit.shape[-1]).float()
+    #U_X = F.one_hot(U_X, num_classes=x_limit.shape[-1]).float()
+    U_E = F.one_hot(U_E, num_classes=e_limit.shape[-1]).float() # (bs, n_max, n_max, de)
 
     # Get upper triangular part of edge noise, without main diagonal
     upper_triangular_mask = torch.zeros_like(U_E)
@@ -388,6 +395,8 @@ def sample_discrete_feature_noise(limit_dist, node_mask):
 
     U_E = U_E * upper_triangular_mask
     U_E = (U_E + torch.transpose(U_E, 1, 2))
+    # X stays empty (not sampled)
+    U_X = torch.zeros(bs, n_max, 0)
 
     assert (U_E == torch.transpose(U_E, 1, 2)).all()
 

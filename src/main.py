@@ -6,12 +6,12 @@ import warnings
 import torch
 torch.cuda.empty_cache()
 import hydra
-from omegaconf import DictConfig
+from omegaconf import DictConfig # used to load config yaml files
 from pytorch_lightning import Trainer
-from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.callbacks import ModelCheckpoint # used to save the best weights
 from pytorch_lightning.utilities.warnings import PossibleUserWarning
 
-from src import utils
+import utils
 from metrics.abstract_metrics import TrainAbstractMetricsDiscrete, TrainAbstractMetrics
 
 from diffusion_model import LiftedDenoisingDiffusion
@@ -19,7 +19,7 @@ from diffusion_model_discrete import DiscreteDenoisingDiffusion
 from diffusion.extra_features import DummyExtraFeatures, ExtraFeatures
 
 
-warnings.filterwarnings("ignore", category=PossibleUserWarning)
+warnings.filterwarnings("ignore", category=PossibleUserWarning) # ignore warnings of this category
 
 
 def get_resume(cfg, model_kwargs):
@@ -67,18 +67,21 @@ def get_resume_adaptive(cfg, model_kwargs):
 
 @hydra.main(version_base='1.3', config_path='../configs', config_name='config')
 def main(cfg: DictConfig):
-    dataset_config = cfg["dataset"]
+    dataset_config = cfg["dataset"] # load dataset name from config file
 
     if dataset_config["name"] in ['sbm', 'comm20', 'planar', 'famipacking']:
         from datasets.famipacking_dataset import FamipackingGraphDataModule, FamipackingDatasetInfo
         from datasets.spectre_dataset import SpectreGraphDataModule, SpectreDatasetInfos
         from analysis.spectre_utils import FamipackingSamplingMetrics, PlanarSamplingMetrics, SBMSamplingMetrics, Comm20SamplingMetrics
         from analysis.visualization import NonMolecularVisualization
-
+      
+        # create a data module for train/val/test sets with graph size, node and edge types distributions
         if dataset_config['name']=='famipacking':
             datamodule=FamipackingGraphDataModule(cfg)
         else:
             datamodule=SpectreGraphDataModule(cfg)
+
+        # defines metrics for each dataset
         if dataset_config['name'] == 'famipacking':
             sampling_metrics = FamipackingSamplingMetrics(datamodule)
         elif dataset_config['name'] == 'sbm':
@@ -88,71 +91,74 @@ def main(cfg: DictConfig):
         else:
             sampling_metrics = PlanarSamplingMetrics(datamodule)
 
+        # collects dataset info (info of nodes might be redundant and cause issues)
         dataset_infos = FamipackingDatasetInfo(datamodule, dataset_config)
         train_metrics = TrainAbstractMetricsDiscrete() if cfg.model.type == 'discrete' else TrainAbstractMetrics()
         visualization_tools = NonMolecularVisualization()
 
         if cfg.model.type == 'discrete' and cfg.model.extra_features is not None:
             extra_features = ExtraFeatures(cfg.model.extra_features, dataset_info=dataset_infos)
-        else:
+        else: #this is our case
             extra_features = DummyExtraFeatures()
         domain_features = DummyExtraFeatures()
 
         dataset_infos.compute_input_output_dims(datamodule=datamodule, extra_features=extra_features,
                                                 domain_features=domain_features)
 
+        # key word arguments dictionary that collects all parameters
         model_kwargs = {'dataset_infos': dataset_infos, 'train_metrics': train_metrics,
                         'sampling_metrics': sampling_metrics, 'visualization_tools': visualization_tools,
                         'extra_features': extra_features, 'domain_features': domain_features}
 
-    elif dataset_config["name"] in ['qm9', 'guacamol', 'moses']:
-        from metrics.molecular_metrics import TrainMolecularMetrics, SamplingMolecularMetrics
-        from metrics.molecular_metrics_discrete import TrainMolecularMetricsDiscrete
-        from diffusion.extra_features_molecular import ExtraMolecularFeatures
-        from analysis.visualization import MolecularVisualization
+    # not relevant
+    # elif dataset_config["name"] in ['qm9', 'guacamol', 'moses']:
+    #     from metrics.molecular_metrics import TrainMolecularMetrics, SamplingMolecularMetrics
+    #     from metrics.molecular_metrics_discrete import TrainMolecularMetricsDiscrete
+    #     from diffusion.extra_features_molecular import ExtraMolecularFeatures
+    #     from analysis.visualization import MolecularVisualization
 
-        if dataset_config["name"] == 'qm9':
-            from datasets import qm9_dataset
-            datamodule = qm9_dataset.QM9DataModule(cfg)
-            dataset_infos = qm9_dataset.QM9infos(datamodule=datamodule, cfg=cfg)
-            train_smiles = qm9_dataset.get_train_smiles(cfg=cfg, train_dataloader=datamodule.train_dataloader(),
-                                                        dataset_infos=dataset_infos, evaluate_dataset=False)
-        elif dataset_config['name'] == 'guacamol':
-            from datasets import guacamol_dataset
-            datamodule = guacamol_dataset.GuacamolDataModule(cfg)
-            dataset_infos = guacamol_dataset.Guacamolinfos(datamodule, cfg)
-            train_smiles = None
+    #     if dataset_config["name"] == 'qm9':
+    #         from datasets import qm9_dataset
+    #         datamodule = qm9_dataset.QM9DataModule(cfg)
+    #         dataset_infos = qm9_dataset.QM9infos(datamodule=datamodule, cfg=cfg)
+    #         train_smiles = qm9_dataset.get_train_smiles(cfg=cfg, train_dataloader=datamodule.train_dataloader(),
+    #                                                     dataset_infos=dataset_infos, evaluate_dataset=False)
+    #     elif dataset_config['name'] == 'guacamol':
+    #         from datasets import guacamol_dataset
+    #         datamodule = guacamol_dataset.GuacamolDataModule(cfg)
+    #         dataset_infos = guacamol_dataset.Guacamolinfos(datamodule, cfg)
+    #         train_smiles = None
 
-        elif dataset_config.name == 'moses':
-            from datasets import moses_dataset
-            datamodule = moses_dataset.MosesDataModule(cfg)
-            dataset_infos = moses_dataset.MOSESinfos(datamodule, cfg)
-            train_smiles = None
-        else:
-            raise ValueError("Dataset not implemented")
+    #     elif dataset_config.name == 'moses':
+    #         from datasets import moses_dataset
+    #         datamodule = moses_dataset.MosesDataModule(cfg)
+    #         dataset_infos = moses_dataset.MOSESinfos(datamodule, cfg)
+    #         train_smiles = None
+    #     else:
+    #         raise ValueError("Dataset not implemented")
 
-        if cfg.model.type == 'discrete' and cfg.model.extra_features is not None:
-            extra_features = ExtraFeatures(cfg.model.extra_features, dataset_info=dataset_infos)
-            domain_features = ExtraMolecularFeatures(dataset_infos=dataset_infos)
-        else:
-            extra_features = DummyExtraFeatures()
-            domain_features = DummyExtraFeatures()
+        # if cfg.model.type == 'discrete' and cfg.model.extra_features is not None:
+        #     extra_features = ExtraFeatures(cfg.model.extra_features, dataset_info=dataset_infos)
+        #     # domain_features = ExtraMolecularFeatures(dataset_infos=dataset_infos)
+        # else:
+        #     extra_features = DummyExtraFeatures()
+        #     domain_features = DummyExtraFeatures()
 
-        dataset_infos.compute_input_output_dims(datamodule=datamodule, extra_features=extra_features,
-                                                domain_features=domain_features)
+        # dataset_infos.compute_input_output_dims(datamodule=datamodule, extra_features=extra_features,
+        #                                         domain_features=domain_features)
 
-        if cfg.model.type == 'discrete':
-            train_metrics = TrainMolecularMetricsDiscrete(dataset_infos)
-        else:
-            train_metrics = TrainMolecularMetrics(dataset_infos)
+        # if cfg.model.type == 'discrete':
+        #     train_metrics = TrainMolecularMetricsDiscrete(dataset_infos)
+        # else:
+        #     train_metrics = TrainMolecularMetrics(dataset_infos)
 
-        # We do not evaluate novelty during training
-        sampling_metrics = SamplingMolecularMetrics(dataset_infos, train_smiles)
-        visualization_tools = MolecularVisualization(cfg.dataset.remove_h, dataset_infos=dataset_infos)
+        # # We do not evaluate novelty during training
+        # sampling_metrics = SamplingMolecularMetrics(dataset_infos, train_smiles)
+        # visualization_tools = MolecularVisualization(cfg.dataset.remove_h, dataset_infos=dataset_infos)
 
-        model_kwargs = {'dataset_infos': dataset_infos, 'train_metrics': train_metrics,
-                        'sampling_metrics': sampling_metrics, 'visualization_tools': visualization_tools,
-                        'extra_features': extra_features, 'domain_features': domain_features}
+        # model_kwargs = {'dataset_infos': dataset_infos, 'train_metrics': train_metrics,
+        #                 'sampling_metrics': sampling_metrics, 'visualization_tools': visualization_tools,
+        #                 'extra_features': extra_features, 'domain_features': domain_features}
     else:
         raise NotImplementedError("Unknown dataset {}".format(cfg["dataset"]))
 

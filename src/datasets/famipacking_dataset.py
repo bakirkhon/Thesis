@@ -4,11 +4,11 @@ import pathlib
 import torch
 from torch.utils.data import random_split
 import torch_geometric.utils
-from torch_geometric.data import InMemoryDataset, download_url
+from torch_geometric.data import InMemoryDataset, download_url # InMemoryDataset: for efficient data handling
 
-from src.datasets.abstract_dataset import AbstractDataModule, AbstractDatasetInfos
+from datasets.abstract_dataset import AbstractDataModule, AbstractDatasetInfos
 
-
+# downloads, processes & saves the dataset
 class FamipackingGraphDataset(InMemoryDataset):
     def __init__(self, dataset_name, split, root, transform=None, pre_transform=None,pre_filter=None):
         self.famipacking_file='famipacking_2048.pt'
@@ -18,6 +18,7 @@ class FamipackingGraphDataset(InMemoryDataset):
         super().__init__(root, transform, pre_transform, pre_filter)
         self.data, self.slices=torch.load(self.processed_paths[0])
 
+# which raw files should exist before processing:
     @property
     def raw_file_names(self):
         return ['train.pt', 'val.pt', 'test.pt']
@@ -36,7 +37,7 @@ class FamipackingGraphDataset(InMemoryDataset):
         all_graphs=torch.load(file_path)
 
         g_cpu=torch.Generator()
-        g_cpu.manual_seed(0)
+        g_cpu.manual_seed(0) # sets a deterministic random generator for reproducible splitting
 
         test_len=int(round(self.num_graphs*0.2))
         train_len=int(round((self.num_graphs-test_len)*0.8))
@@ -51,6 +52,7 @@ class FamipackingGraphDataset(InMemoryDataset):
         val_data=[]
         test_data=[]
 
+        #converts the arrays into tensors
         for i, graph in enumerate(all_graphs):
             graph['X'] = torch.tensor(graph['X'], dtype=torch.float)
             graph['E'] = torch.tensor(graph['E'], dtype=torch.float)
@@ -63,6 +65,7 @@ class FamipackingGraphDataset(InMemoryDataset):
             else:
                 raise ValueError(f'Index {i} not in any split')
         
+        #save the raw files
         torch.save(train_data, self.raw_paths[0])
         torch.save(val_data, self.raw_paths[1])
         torch.save(test_data, self.raw_paths[2])
@@ -76,7 +79,7 @@ class FamipackingGraphDataset(InMemoryDataset):
             X=graph['X']
             E=graph['E']
             n=X.shape[0]
-            y=torch.zeros([1, 0]).float()
+            y=torch.zeros([1, 0]).float() # empty placeholder label for each graph
             # first row=source nodes, second row=destination rows
             edge_index, _=torch_geometric.utils.dense_to_sparse((E.sum(-1)>0).float())
             edge_attr=E[edge_index[0],edge_index[1],:]
@@ -89,12 +92,16 @@ class FamipackingGraphDataset(InMemoryDataset):
                 data = self.pre_transform(data)
             
             data_list.append(data)
+        #stacks everything into one big tensor storage
         torch.save(self.collate(data_list), self.processed_paths[0])
 
+# creates DataModule object that wraps three datasets
 class FamipackingGraphDataModule(AbstractDataModule):
     def __init__(self, cfg, n_graphs=2048):
         self.cfg=cfg
         self.datadir=cfg.dataset.datadir
+
+        # define the root directory where dataset will be stored
         base_path=pathlib.Path(os.path.realpath(__file__)).parents[2]
         root_path=os.path.join(base_path, self.datadir)
 
@@ -109,14 +116,15 @@ class FamipackingGraphDataModule(AbstractDataModule):
         self.inner=self.train_dataset
 
     def __getitem__(self, item):
-        return self.inner[item]
+        return self.inner[item] # datamodule[i] will return the i-th graph from the training set
     
+# collects dataset info
 class FamipackingDatasetInfo(AbstractDatasetInfos):
     def __init__(self, datamodule, dataset_config):
         self.datamodule=datamodule
-        self.name='nx_graphs'
+        self.name='famipacking_graphs'
         self.n_nodes=self.datamodule.node_counts()
-        self.node_types=torch.tensor([1]) # assuming the same node types
+        self.node_types=torch.tensor([1]) # neglecting the node types             
         self.edge_types=self.datamodule.edge_counts()
         super().complete_infos(self.n_nodes, self.node_types)
 

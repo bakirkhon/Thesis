@@ -1,6 +1,6 @@
 # Training settings
 n_epochs: 1000
-batch_size: 512 #512 crashes with sbm dataset due to lack of memory, use 4
+batch_size: 16 #512
 lr: 0.0002
 clip_grad: null          # float, null to disable
 save_model: True
