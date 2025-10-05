@@ -130,9 +130,9 @@ class FamipackingDatasetInfo(AbstractDatasetInfos):
         self.datamodule=datamodule
         self.name='famipacking_graphs'
         self.n_nodes=self.datamodule.node_counts()
-        self.print("Distribution of node counts: ", self.n_nodes)
+        print("Distribution of node counts: ", self.n_nodes)
         self.node_types=torch.tensor([1]) # neglecting the node types             
         self.edge_types=self.datamodule.edge_counts()
-        self.print("Distribtution of edge types: ", self.edge_types)
+        print("Distribtution of edge types: ", self.edge_types)
         super().complete_infos(self.n_nodes, self.node_types)
 

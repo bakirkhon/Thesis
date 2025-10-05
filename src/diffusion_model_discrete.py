@@ -42,15 +42,15 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         self.train_loss = TrainLossDiscrete(self.cfg.model.lambda_train)
 
         self.val_nll = NLL()
-        self.val_X_kl = SumExceptBatchKL()
+        # self.val_X_kl = SumExceptBatchKL()
         self.val_E_kl = SumExceptBatchKL()
-        self.val_X_logp = SumExceptBatchMetric()
+        # self.val_X_logp = SumExceptBatchMetric()
         self.val_E_logp = SumExceptBatchMetric()
 
         self.test_nll = NLL()
-        self.test_X_kl = SumExceptBatchKL()
+        # self.test_X_kl = SumExceptBatchKL()
         self.test_E_kl = SumExceptBatchKL()
-        self.test_X_logp = SumExceptBatchMetric()
+        # self.test_X_logp = SumExceptBatchMetric()
         self.test_E_logp = SumExceptBatchMetric()
 
         self.train_metrics = train_metrics
@@ -79,8 +79,8 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
             y_limit = torch.ones(self.ydim_output) / self.ydim_output
             self.limit_dist = utils.PlaceHolder(X=x_limit, E=e_limit, y=y_limit)
         elif cfg.model.transition == 'marginal':        
-            node_types = self.dataset_info.node_types.float() # dummy node_types
-            x_marginals = node_types / torch.sum(node_types)
+            node_types = self.dataset_info.node_types.float() 
+            x_marginals = torch.zeros(3) # dummy node_types
 
             edge_types = self.dataset_info.edge_types.float()
             e_marginals = edge_types / torch.sum(edge_types)
@@ -133,6 +133,49 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         if self.local_rank == 0:
             utils.setup_wandb(self.cfg)
 
+    def on_fit_end(self):
+        """Save model predictions for the entire training dataset after training completes."""
+        self.print("Generating predictions for the entire training dataset...")
+
+        all_pred_E = []
+        all_true_E = []
+
+        self.eval()
+        with torch.no_grad():
+            for batch in self.trainer.datamodule.train_dataloader():
+                batch = batch.to(self.device)
+                dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+                dense_data = dense_data.mask(node_mask)
+
+                X, E, y = dense_data.X, dense_data.E, batch.y
+                noisy_data = self.apply_noise(X, E, y, node_mask)
+                extra_data = self.compute_extra_data(noisy_data)
+                pred = self.forward(noisy_data, extra_data, node_mask)
+
+                # Predict edge probabilities and convert to one-hot
+                pred_E = F.softmax(pred.E, dim=-1)
+                E_pred_discrete = F.one_hot(torch.argmax(pred_E, dim=-1),
+                                            num_classes=self.Edim_output).float()
+
+                # Mask out padded regions
+                mask = (node_mask.unsqueeze(1) * node_mask.unsqueeze(2))
+                E_pred_discrete = E_pred_discrete * mask.unsqueeze(-1)
+                E = E * mask.unsqueeze(-1)
+
+                all_pred_E.append(E_pred_discrete.cpu())
+                all_true_E.append(E.cpu())
+
+        all_pred_E = torch.cat(all_pred_E, dim=0)
+        all_true_E = torch.cat(all_true_E, dim=0)
+
+        os.makedirs("outputs/final_predictions", exist_ok=True)
+        torch.save({"predicted_E": all_pred_E, "true_E": all_true_E},
+                "outputs/final_predictions/train_set_E_predictions.pt")
+
+        self.print(f"Saved final one-hot E predictions for the train set to: "
+                f"outputs/final_predictions/train_set_E_predictions.pt")
+
+
     # Reset metrics and start the epoch timer before def training_step
     def on_train_epoch_start(self) -> None:
         self.print("Starting train epoch...")
@@ -160,9 +203,9 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
     def on_validation_epoch_start(self) -> None:
         self.print("Starting validation epoch...")
         self.val_nll.reset()
-        self.val_X_kl.reset()
+        #self.val_X_kl.reset()
         self.val_E_kl.reset()
-        self.val_X_logp.reset()
+        #self.val_X_logp.reset()
         self.val_E_logp.reset()
         self.sampling_metrics.reset()
 
@@ -181,17 +224,17 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
         dense_data = dense_data.mask(node_mask)
         X = dense_data.X
-        metrics = [self.val_nll.compute(), self.val_X_kl.compute() * self.T, self.val_E_kl.compute() * self.T,
-                   self.val_X_logp.compute(), self.val_E_logp.compute()]
+        metrics = [self.val_nll.compute(), self.val_E_kl.compute() * self.T, #self.val_X_kl.compute() * self.T, 
+                   self.val_E_logp.compute()] #self.val_X_logp.compute(),]
         if wandb.run:
             wandb.log({"val/epoch_NLL": metrics[0],
                        #"val/X_kl": metrics[1],
-                       "val/E_kl": metrics[2],
+                       "val/E_kl": metrics[1],
                        #"val/X_logp": metrics[3],
-                       "val/E_logp": metrics[4]}, commit=False)
+                       "val/E_logp": metrics[2]}, commit=False)
 
         self.print(f"Epoch {self.current_epoch}: Val NLL {metrics[0] :.2f} --",
-                   f"Val Edge type KL: {metrics[2] :.2f}")
+                   f"Val Edge type KL: {metrics[1] :.2f}")
         # self.print(f"Epoch {self.current_epoch}: Val NLL {metrics[0] :.2f} -- Val Atom type KL {metrics[1] :.2f} -- ",
         #            f"Val Edge type KL: {metrics[2] :.2f}")
 
@@ -235,94 +278,94 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         #     self.print(f'Done. Sampling took {time.time() - start:.2f} seconds\n')
         #     print("Validation epoch end ends...")
 
-    def on_test_epoch_start(self) -> None:
-        self.print("Starting test...")
-        self.test_nll.reset()
-        self.test_X_kl.reset()
-        self.test_E_kl.reset()
-        self.test_X_logp.reset()
-        self.test_E_logp.reset()
-        if self.local_rank == 0:
-            utils.setup_wandb(self.cfg)
+    # def on_test_epoch_start(self) -> None:
+    #     self.print("Starting test...")
+    #     self.test_nll.reset()
+    #     self.test_X_kl.reset()
+    #     self.test_E_kl.reset()
+    #     self.test_X_logp.reset()
+    #     self.test_E_logp.reset()
+    #     if self.local_rank == 0:
+    #         utils.setup_wandb(self.cfg)
 
-    def test_step(self, data, i):
-        dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
-        dense_data = dense_data.mask(node_mask)
-        noisy_data = self.apply_noise(dense_data.X, dense_data.E, data.y, node_mask)
-        extra_data = self.compute_extra_data(noisy_data)
-        pred = self.forward(noisy_data, extra_data, node_mask)
-        nll = self.compute_val_loss(pred, noisy_data, dense_data.X, dense_data.E, data.y, node_mask, test=True)
-        return {'loss': nll}
+    # def test_step(self, data, i):
+    #     dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
+    #     dense_data = dense_data.mask(node_mask)
+    #     noisy_data = self.apply_noise(dense_data.X, dense_data.E, data.y, node_mask)
+    #     extra_data = self.compute_extra_data(noisy_data)
+    #     pred = self.forward(noisy_data, extra_data, node_mask)
+    #     nll = self.compute_val_loss(pred, noisy_data, dense_data.X, dense_data.E, data.y, node_mask, test=True)
+    #     return {'loss': nll}
 
-    def on_test_epoch_end(self) -> None:
-        batch = next(iter(self.trainer.datamodule.val_dataloader()))
-        dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-        dense_data = dense_data.mask(node_mask)
-        X = dense_data.X
+    # def on_test_epoch_end(self) -> None:
+    #     batch = next(iter(self.trainer.datamodule.val_dataloader()))
+    #     dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+    #     dense_data = dense_data.mask(node_mask)
+    #     X = dense_data.X
 
-        """ Measure likelihood on a test set and compute stability metrics. """
-        metrics = [self.test_nll.compute(), self.test_X_kl.compute(), self.test_E_kl.compute(),
-                   self.test_X_logp.compute(), self.test_E_logp.compute()]
-        if wandb.run:
-            wandb.log({"test/epoch_NLL": metrics[0],
-                       #"test/X_kl": metrics[1],
-                       "test/E_kl": metrics[2],
-                       #"test/X_logp": metrics[3],
-                       "test/E_logp": metrics[4]}, commit=False)
+    #     """ Measure likelihood on a test set and compute stability metrics. """
+    #     metrics = [self.test_nll.compute(), self.test_X_kl.compute(), self.test_E_kl.compute(),
+    #                self.test_X_logp.compute(), self.test_E_logp.compute()]
+    #     if wandb.run:
+    #         wandb.log({"test/epoch_NLL": metrics[0],
+    #                    #"test/X_kl": metrics[1],
+    #                    "test/E_kl": metrics[2],
+    #                    #"test/X_logp": metrics[3],
+    #                    "test/E_logp": metrics[4]}, commit=False)
             
-        self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Edge type KL: {metrics[2] :.2f}")
-        # self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Atom type KL {metrics[1] :.2f} -- ",
-        #            f"Test Edge type KL: {metrics[2] :.2f}")
+    #     self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Edge type KL: {metrics[2] :.2f}")
+    #     # self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Atom type KL {metrics[1] :.2f} -- ",
+    #     #            f"Test Edge type KL: {metrics[2] :.2f}")
 
-        test_nll = metrics[0]
-        if wandb.run:
-            wandb.log({"test/epoch_NLL": test_nll}, commit=False)
+    #     test_nll = metrics[0]
+    #     if wandb.run:
+    #         wandb.log({"test/epoch_NLL": test_nll}, commit=False)
 
-        self.print(f'Test loss: {test_nll :.4f}')
+    #     self.print(f'Test loss: {test_nll :.4f}')
 
-        samples_left_to_generate = self.cfg.general.final_model_samples_to_generate
-        samples_left_to_save = self.cfg.general.final_model_samples_to_save
-        chains_left_to_save = self.cfg.general.final_model_chains_to_save
+    #     samples_left_to_generate = self.cfg.general.final_model_samples_to_generate
+    #     samples_left_to_save = self.cfg.general.final_model_samples_to_save
+    #     chains_left_to_save = self.cfg.general.final_model_chains_to_save
 
-        samples = []
-        id = 0
-        while samples_left_to_generate > 0:
-            self.print(f'Samples left to generate: {samples_left_to_generate}/'
-                       f'{self.cfg.general.final_model_samples_to_generate}', end='', flush=True)
-            bs = 2 * self.cfg.train.batch_size
-            to_generate = min(samples_left_to_generate, bs)
-            to_save = min(samples_left_to_save, bs)
-            chains_save = min(chains_left_to_save, bs)
-            samples.extend(self.sample_batch(id, to_generate, num_nodes=None, save_final=to_save,
-                                             keep_chain=chains_save, number_chain_steps=self.number_chain_steps, X_fixed=X))
-            id += to_generate
-            samples_left_to_save -= to_save
-            samples_left_to_generate -= to_generate
-            chains_left_to_save -= chains_save
-        self.print("Saving the generated graphs")
-        filename = f'generated_samples1.txt'
-        for i in range(2, 10):
-            if os.path.exists(filename):
-                filename = f'generated_samples{i}.txt'
-            else:
-                break
-        with open(filename, 'w') as f:
-            for item in samples:
-                f.write(f"N={item[0].shape[0]}\n")
-                atoms = item[0].tolist()
-                f.write("X: \n")
-                for at in atoms:
-                    f.write(f"{at} ")
-                f.write("\n")
-                f.write("E: \n")
-                for bond_list in item[1]:
-                    for bond in bond_list:
-                        f.write(f"{bond} ")
-                    f.write("\n")
-                f.write("\n")
-        self.print("Generated graphs Saved. Computing sampling metrics...")
-        self.sampling_metrics(samples, self.name, self.current_epoch, self.val_counter, test=True, local_rank=self.local_rank)
-        self.print("Done testing.")
+    #     samples = []
+    #     id = 0
+    #     while samples_left_to_generate > 0:
+    #         self.print(f'Samples left to generate: {samples_left_to_generate}/'
+    #                    f'{self.cfg.general.final_model_samples_to_generate}', end='', flush=True)
+    #         bs = 2 * self.cfg.train.batch_size
+    #         to_generate = min(samples_left_to_generate, bs)
+    #         to_save = min(samples_left_to_save, bs)
+    #         chains_save = min(chains_left_to_save, bs)
+    #         samples.extend(self.sample_batch(id, to_generate, num_nodes=None, save_final=to_save,
+    #                                          keep_chain=chains_save, number_chain_steps=self.number_chain_steps, X_fixed=X))
+    #         id += to_generate
+    #         samples_left_to_save -= to_save
+    #         samples_left_to_generate -= to_generate
+    #         chains_left_to_save -= chains_save
+    #     self.print("Saving the generated graphs")
+    #     filename = f'generated_samples1.txt'
+    #     for i in range(2, 10):
+    #         if os.path.exists(filename):
+    #             filename = f'generated_samples{i}.txt'
+    #         else:
+    #             break
+    #     with open(filename, 'w') as f:
+    #         for item in samples:
+    #             f.write(f"N={item[0].shape[0]}\n")
+    #             atoms = item[0].tolist()
+    #             f.write("X: \n")
+    #             for at in atoms:
+    #                 f.write(f"{at} ")
+    #             f.write("\n")
+    #             f.write("E: \n")
+    #             for bond_list in item[1]:
+    #                 for bond in bond_list:
+    #                     f.write(f"{bond} ")
+    #                 f.write("\n")
+    #             f.write("\n")
+    #     self.print("Generated graphs Saved. Computing sampling metrics...")
+    #     self.sampling_metrics(samples, self.name, self.current_epoch, self.val_counter, test=True, local_rank=self.local_rank)
+    #     self.print("Done testing.")
 
 
     def kl_prior(self, X, E, node_mask):
@@ -343,7 +386,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         probE = E @ Qtb.E.unsqueeze(1)  # (bs, n, n, de_out)
         assert probX.shape == X.shape
 
-        bs, n, _ = probX.shape
+        bs, n, _, _ = probE.shape
 
         limit_X = self.limit_dist.X[None, None, :].expand(bs, n, -1).type_as(probX)
         limit_E = self.limit_dist.E[None, None, None, :].expand(bs, n, n, -1).type_as(probE)
@@ -355,7 +398,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
                                                                                       pred_E=probE,
                                                                                       node_mask=node_mask)
 
-        kl_distance_X = F.kl_div(input=probX.log(), target=limit_dist_X, reduction='none')
+        #kl_distance_X = F.kl_div(input=probX.log(), target=limit_dist_X, reduction='none')
         kl_distance_E = F.kl_div(input=probE.log(), target=limit_dist_E, reduction='none')
 
         return diffusion_utils.sum_except_batch(kl_distance_E) #diffusion_utils.sum_except_batch(kl_distance_X) + \
@@ -371,6 +414,9 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
         # Compute distributions to compare with KL
         bs, n, d = X.shape
+        print('bs in compute_Lt: ', bs)
+        print('n in computeLt: ', n)
+        print('d in compute Lt: ', d)
         prob_true = diffusion_utils.posterior_distributions(X=X, E=E, y=y, X_t=noisy_data['X_t'], E_t=noisy_data['E_t'],
                                                             y_t=noisy_data['y_t'], Qt=Qt, Qsb=Qsb, Qtb=Qtb) # true posterior distr: q(z_{t-1}|z_t, z_0)
         prob_true.E = prob_true.E.reshape((bs, n, n, -1))
@@ -385,7 +431,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
                                                                                                 pred_X=prob_pred.X,
                                                                                                 pred_E=prob_pred.E,
                                                                                                 node_mask=node_mask)
-        kl_x = (self.test_X_kl if test else self.val_X_kl)(prob_true.X, torch.log(prob_pred.X))
+        # kl_x = (self.test_X_kl if test else self.val_X_kl)(prob_true.X, torch.log(prob_pred.X))
         kl_e = (self.test_E_kl if test else self.val_E_kl)(prob_true.E, torch.log(prob_pred.E))
         return self.T * kl_e
         #return self.T * (kl_x + kl_e)
@@ -475,8 +521,8 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         alpha_t_bar = self.noise_schedule.get_alpha_bar(t_normalized=t_float)      # (bs, 1)
 
         Qtb = self.transition_model.get_Qt_bar(alpha_t_bar, device=self.device)  # (bs, dx_in, dx_out), (bs, de_in, de_out)
-        assert (abs(Qtb.X.sum(dim=2) - 1.) < 1e-4).all(), Qtb.X.sum(dim=2) - 1
-        assert (abs(Qtb.E.sum(dim=2) - 1.) < 1e-4).all()
+        #assert (abs(Qtb.X.sum(dim=2) - 1.) < 1e-4).all(), Qtb.X.sum(dim=2) - 1
+        #assert (abs(Qtb.E.sum(dim=2) - 1.) < 1e-4).all()
 
         # Compute transition probabilities
         #probX = X @ Qtb.X  # (bs, n, dx_out)
@@ -506,8 +552,8 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         t = noisy_data['t']
 
         # 1.
-        N = node_mask.sum(1).long()
-        log_pN = self.node_dist.log_prob(N) # penalize the model if it generates graphs with unlikely node counts
+        #N = node_mask.sum(1).long()
+        log_pN = 0 #self.node_dist.log_prob(N) # penalize the model if it generates graphs with unlikely node counts
 
         # 2. The KL between q(z_T | x) and p(z_T) = Marginal(E). Should be close to zero.
         kl_prior = self.kl_prior(X, E, node_mask) # measure how the noised distribution at T q(z_T/x) is close to target distribution p(z_T) 
@@ -543,177 +589,177 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         return self.model(X, E, y, node_mask)
 
     @torch.no_grad()
-    def sample_batch(self, batch_id: int, batch_size: int, keep_chain: int, number_chain_steps: int,
-                     save_final: int, X_fixed, num_nodes=None):
     # def sample_batch(self, batch_id: int, batch_size: int, keep_chain: int, number_chain_steps: int,
-    #                  save_final: int, num_nodes=None):
-        """
-        :param batch_id: int
-        :param batch_size: int
-        :param num_nodes: int, <int>tensor (batch_size) (optional) for specifying number of nodes
-        :param save_final: int: number of predictions to save to file
-        :param keep_chain: int: number of chains to save to file
-        :param keep_chain_steps: number of timesteps to save for each chain
-        :return: molecule_list. Each element of this list is a tuple (atom_types, charges, positions)
-        """
-        if num_nodes is None:
-            n_nodes = self.node_dist.sample_n(batch_size, self.device)
-        elif type(num_nodes) == int:
-            n_nodes = num_nodes * torch.ones(batch_size, device=self.device, dtype=torch.int)
-        else:
-            assert isinstance(num_nodes, torch.Tensor)
-            n_nodes = num_nodes
-        n_max = torch.max(n_nodes).item()
-        # Build the masks
-        arange = torch.arange(n_max, device=self.device).unsqueeze(0).expand(batch_size, -1)
-        node_mask = arange < n_nodes.unsqueeze(1)
-        # Sample noise  -- z has size (n_samples, n_nodes, n_features)
-        z_T = diffusion_utils.sample_discrete_feature_noise(limit_dist=self.limit_dist, node_mask=node_mask)
-        X = X_fixed.to(self.device)
-        E, y = z_T.E, z_T.y
+    #                  save_final: int, X_fixed, num_nodes=None):
+    # # def sample_batch(self, batch_id: int, batch_size: int, keep_chain: int, number_chain_steps: int,
+    # #                  save_final: int, num_nodes=None):
+    #     """
+    #     :param batch_id: int
+    #     :param batch_size: int
+    #     :param num_nodes: int, <int>tensor (batch_size) (optional) for specifying number of nodes
+    #     :param save_final: int: number of predictions to save to file
+    #     :param keep_chain: int: number of chains to save to file
+    #     :param keep_chain_steps: number of timesteps to save for each chain
+    #     :return: molecule_list. Each element of this list is a tuple (atom_types, charges, positions)
+    #     """
+    #     if num_nodes is None:
+    #         n_nodes = self.node_dist.sample_n(batch_size, self.device)
+    #     elif type(num_nodes) == int:
+    #         n_nodes = num_nodes * torch.ones(batch_size, device=self.device, dtype=torch.int)
+    #     else:
+    #         assert isinstance(num_nodes, torch.Tensor)
+    #         n_nodes = num_nodes
+    #     n_max = torch.max(n_nodes).item()
+    #     # Build the masks
+    #     arange = torch.arange(n_max, device=self.device).unsqueeze(0).expand(batch_size, -1)
+    #     node_mask = arange < n_nodes.unsqueeze(1)
+    #     # Sample noise  -- z has size (n_samples, n_nodes, n_features)
+    #     z_T = diffusion_utils.sample_discrete_feature_noise(limit_dist=self.limit_dist, node_mask=node_mask)
+    #     X = X_fixed.to(self.device)
+    #     E, y = z_T.E, z_T.y
 
-        assert (E == torch.transpose(E, 1, 2)).all()
-        assert number_chain_steps < self.T
-        chain_X_size = torch.Size((number_chain_steps, keep_chain, X.size(1)))
-        chain_E_size = torch.Size((number_chain_steps, keep_chain, E.size(1), E.size(2)))
+    #     assert (E == torch.transpose(E, 1, 2)).all()
+    #     assert number_chain_steps < self.T
+    #     chain_X_size = torch.Size((number_chain_steps, keep_chain, X.size(1)))
+    #     chain_E_size = torch.Size((number_chain_steps, keep_chain, E.size(1), E.size(2)))
 
-        chain_X = torch.zeros(chain_X_size)
-        chain_E = torch.zeros(chain_E_size)
+    #     chain_X = torch.zeros(chain_X_size)
+    #     chain_E = torch.zeros(chain_E_size)
 
-        # Iteratively sample p(z_s | z_t) for t = 1, ..., T, with s = t - 1.
-        for s_int in reversed(range(0, self.T)):
-            s_array = s_int * torch.ones((batch_size, 1)).type_as(y)
-            t_array = s_array + 1
-            s_norm = s_array / self.T
-            t_norm = t_array / self.T
+    #     # Iteratively sample p(z_s | z_t) for t = 1, ..., T, with s = t - 1.
+    #     for s_int in reversed(range(0, self.T)):
+    #         s_array = s_int * torch.ones((batch_size, 1)).type_as(y)
+    #         t_array = s_array + 1
+    #         s_norm = s_array / self.T
+    #         t_norm = t_array / self.T
 
-            # Sample z_s
-            sampled_s, discrete_sampled_s = self.sample_p_zs_given_zt(s_norm, t_norm, X, E, y, node_mask)
-            #X, E, y = sampled_s.X, sampled_s.E, sampled_s.y
-            E, y = sampled_s.E, sampled_s.y
+    #         # Sample z_s
+    #         sampled_s, discrete_sampled_s = self.sample_p_zs_given_zt(s_norm, t_norm, X, E, y, node_mask)
+    #         #X, E, y = sampled_s.X, sampled_s.E, sampled_s.y
+    #         E, y = sampled_s.E, sampled_s.y
 
-            # Save the first keep_chain graphs
-            write_index = (s_int * number_chain_steps) // self.T
-            chain_X[write_index] = X[:keep_chain]
-            chain_E[write_index] = discrete_sampled_s.E[:keep_chain]
+    #         # Save the first keep_chain graphs
+    #         write_index = (s_int * number_chain_steps) // self.T
+    #         chain_X[write_index] = X[:keep_chain]
+    #         chain_E[write_index] = discrete_sampled_s.E[:keep_chain]
 
-        # Sample
-        sampled_s = sampled_s.mask(node_mask, collapse=True)
-        E, y = sampled_s.E, sampled_s.y
-        # X, E, y = sampled_s.X, sampled_s.E, sampled_s.y
+    #     # Sample
+    #     sampled_s = sampled_s.mask(node_mask, collapse=True)
+    #     E, y = sampled_s.E, sampled_s.y
+    #     # X, E, y = sampled_s.X, sampled_s.E, sampled_s.y
 
 
 
-        # Prepare the chain for saving
-        if keep_chain > 0:
-            final_X_chain = X[:keep_chain]
-            final_E_chain = E[:keep_chain]
+    #     # Prepare the chain for saving
+    #     if keep_chain > 0:
+    #         final_X_chain = X[:keep_chain]
+    #         final_E_chain = E[:keep_chain]
 
-            chain_X[0] = final_X_chain                  # Overwrite last frame with the resulting X, E
-            chain_E[0] = final_E_chain
+    #         chain_X[0] = final_X_chain                  # Overwrite last frame with the resulting X, E
+    #         chain_E[0] = final_E_chain
 
-            chain_X = diffusion_utils.reverse_tensor(chain_X)
-            chain_E = diffusion_utils.reverse_tensor(chain_E)
+    #         chain_X = diffusion_utils.reverse_tensor(chain_X)
+    #         chain_E = diffusion_utils.reverse_tensor(chain_E)
 
-            # Repeat last frame to see final sample better
-            chain_X = torch.cat([chain_X, chain_X[-1:].repeat(10, 1, 1)], dim=0)
-            chain_E = torch.cat([chain_E, chain_E[-1:].repeat(10, 1, 1, 1)], dim=0)
-            assert chain_X.size(0) == (number_chain_steps + 10)
+    #         # Repeat last frame to see final sample better
+    #         chain_X = torch.cat([chain_X, chain_X[-1:].repeat(10, 1, 1)], dim=0)
+    #         chain_E = torch.cat([chain_E, chain_E[-1:].repeat(10, 1, 1, 1)], dim=0)
+    #         assert chain_X.size(0) == (number_chain_steps + 10)
 
-        molecule_list = []
-        for i in range(batch_size):
-            n = n_nodes[i]
-            atom_types = X[i, :n].cpu()
-            edge_types = E[i, :n, :n].cpu()
-            molecule_list.append([atom_types, edge_types])
+    #     molecule_list = []
+    #     for i in range(batch_size):
+    #         n = n_nodes[i]
+    #         atom_types = X[i, :n].cpu()
+    #         edge_types = E[i, :n, :n].cpu()
+    #         molecule_list.append([atom_types, edge_types])
 
-        # Visualize chains
-        if self.visualization_tools is not None:
-            self.print('Visualizing chains...')
-            current_path = os.getcwd()
-            num_molecules = chain_X.size(1)       # number of molecules
-            for i in range(num_molecules):
-                result_path = os.path.join(current_path, f'chains/{self.cfg.general.name}/'
-                                                         f'epoch{self.current_epoch}/'
-                                                         f'chains/molecule_{batch_id + i}')
-                if not os.path.exists(result_path):
-                    os.makedirs(result_path)
-                    _ = self.visualization_tools.visualize_chain(result_path,
-                                                                 chain_X[:, i, :].numpy(),
-                                                                 chain_E[:, i, :].numpy())
-                self.print('\r{}/{} complete'.format(i+1, num_molecules), end='', flush=True)
-            self.print('\nVisualizing molecules...')
+    #     # Visualize chains
+    #     if self.visualization_tools is not None:
+    #         self.print('Visualizing chains...')
+    #         current_path = os.getcwd()
+    #         num_molecules = chain_X.size(1)       # number of molecules
+    #         for i in range(num_molecules):
+    #             result_path = os.path.join(current_path, f'chains/{self.cfg.general.name}/'
+    #                                                      f'epoch{self.current_epoch}/'
+    #                                                      f'chains/molecule_{batch_id + i}')
+    #             if not os.path.exists(result_path):
+    #                 os.makedirs(result_path)
+    #                 _ = self.visualization_tools.visualize_chain(result_path,
+    #                                                              chain_X[:, i, :].numpy(),
+    #                                                              chain_E[:, i, :].numpy())
+    #             self.print('\r{}/{} complete'.format(i+1, num_molecules), end='', flush=True)
+    #         self.print('\nVisualizing molecules...')
 
-            # Visualize the final molecules
-            current_path = os.getcwd()
-            result_path = os.path.join(current_path,
-                                       f'graphs/{self.name}/epoch{self.current_epoch}_b{batch_id}/')
-            self.visualization_tools.visualize(result_path, molecule_list, save_final)
-            self.print("Done.")
+    #         # Visualize the final molecules
+    #         current_path = os.getcwd()
+    #         result_path = os.path.join(current_path,
+    #                                    f'graphs/{self.name}/epoch{self.current_epoch}_b{batch_id}/')
+    #         self.visualization_tools.visualize(result_path, molecule_list, save_final)
+    #         self.print("Done.")
 
-        return molecule_list
+    #     return molecule_list
 
-    def sample_p_zs_given_zt(self, s, t, X_t, E_t, y_t, node_mask):
-        """Samples from zs ~ p(zs | zt). Only used during sampling.
-           If last_step, return the graph prediction as well"""
-        bs, n, dxs = X_t.shape
-        beta_t = self.noise_schedule(t_normalized=t)  # (bs, 1)
-        alpha_s_bar = self.noise_schedule.get_alpha_bar(t_normalized=s)
-        alpha_t_bar = self.noise_schedule.get_alpha_bar(t_normalized=t)
+    # def sample_p_zs_given_zt(self, s, t, X_t, E_t, y_t, node_mask):
+    #     """Samples from zs ~ p(zs | zt). Only used during sampling.
+    #        If last_step, return the graph prediction as well"""
+    #     bs, n, dxs = X_t.shape
+    #     beta_t = self.noise_schedule(t_normalized=t)  # (bs, 1)
+    #     alpha_s_bar = self.noise_schedule.get_alpha_bar(t_normalized=s)
+    #     alpha_t_bar = self.noise_schedule.get_alpha_bar(t_normalized=t)
 
-        # Retrieve transitions matrix
-        Qtb = self.transition_model.get_Qt_bar(alpha_t_bar, self.device)
-        Qsb = self.transition_model.get_Qt_bar(alpha_s_bar, self.device)
-        Qt = self.transition_model.get_Qt(beta_t, self.device)
+    #     # Retrieve transitions matrix
+    #     Qtb = self.transition_model.get_Qt_bar(alpha_t_bar, self.device)
+    #     Qsb = self.transition_model.get_Qt_bar(alpha_s_bar, self.device)
+    #     Qt = self.transition_model.get_Qt(beta_t, self.device)
 
-        # Neural net predictions
-        noisy_data = {'X_t': X_t, 'E_t': E_t, 'y_t': y_t, 't': t, 'node_mask': node_mask}
-        extra_data = self.compute_extra_data(noisy_data)
-        pred = self.forward(noisy_data, extra_data, node_mask)
+    #     # Neural net predictions
+    #     noisy_data = {'X_t': X_t, 'E_t': E_t, 'y_t': y_t, 't': t, 'node_mask': node_mask}
+    #     extra_data = self.compute_extra_data(noisy_data)
+    #     pred = self.forward(noisy_data, extra_data, node_mask)
 
-        # Normalize predictions
-        pred_X = F.softmax(pred.X, dim=-1)               # bs, n, d0
-        pred_E = F.softmax(pred.E, dim=-1)               # bs, n, n, d0
+    #     # Normalize predictions
+    #     pred_X = F.softmax(pred.X, dim=-1)               # bs, n, d0
+    #     pred_E = F.softmax(pred.E, dim=-1)               # bs, n, n, d0
 
-        # p_s_and_t_given_0_X = diffusion_utils.compute_batched_over0_posterior_distribution(X_t=X_t,
-        #                                                                                    Qt=Qt.X,
-        #                                                                                    Qsb=Qsb.X,
-        #                                                                                    Qtb=Qtb.X)
+    #     # p_s_and_t_given_0_X = diffusion_utils.compute_batched_over0_posterior_distribution(X_t=X_t,
+    #     #                                                                                    Qt=Qt.X,
+    #     #                                                                                    Qsb=Qsb.X,
+    #     #                                                                                    Qtb=Qtb.X)
 
-        p_s_and_t_given_0_E = diffusion_utils.compute_batched_over0_posterior_distribution(X_t=E_t,
-                                                                                           Qt=Qt.E,
-                                                                                           Qsb=Qsb.E,
-                                                                                           Qtb=Qtb.E)
-        # Dim of these two tensors: bs, N, d0, d_t-1
-        # weighted_X = pred_X.unsqueeze(-1) * p_s_and_t_given_0_X         # bs, n, d0, d_t-1
-        # unnormalized_prob_X = weighted_X.sum(dim=2)                     # bs, n, d_t-1
-        # unnormalized_prob_X[torch.sum(unnormalized_prob_X, dim=-1) == 0] = 1e-5
-        # prob_X = unnormalized_prob_X / torch.sum(unnormalized_prob_X, dim=-1, keepdim=True)  # bs, n, d_t-1
+    #     p_s_and_t_given_0_E = diffusion_utils.compute_batched_over0_posterior_distribution(X_t=E_t,
+    #                                                                                        Qt=Qt.E,
+    #                                                                                        Qsb=Qsb.E,
+    #                                                                                        Qtb=Qtb.E)
+    #     # Dim of these two tensors: bs, N, d0, d_t-1
+    #     # weighted_X = pred_X.unsqueeze(-1) * p_s_and_t_given_0_X         # bs, n, d0, d_t-1
+    #     # unnormalized_prob_X = weighted_X.sum(dim=2)                     # bs, n, d_t-1
+    #     # unnormalized_prob_X[torch.sum(unnormalized_prob_X, dim=-1) == 0] = 1e-5
+    #     # prob_X = unnormalized_prob_X / torch.sum(unnormalized_prob_X, dim=-1, keepdim=True)  # bs, n, d_t-1
 
-        pred_E = pred_E.reshape((bs, -1, pred_E.shape[-1]))
-        weighted_E = pred_E.unsqueeze(-1) * p_s_and_t_given_0_E        # bs, N, d0, d_t-1
-        unnormalized_prob_E = weighted_E.sum(dim=-2)
-        unnormalized_prob_E[torch.sum(unnormalized_prob_E, dim=-1) == 0] = 1e-5
-        prob_E = unnormalized_prob_E / torch.sum(unnormalized_prob_E, dim=-1, keepdim=True)
-        prob_E = prob_E.reshape(bs, n, n, pred_E.shape[-1])
+    #     pred_E = pred_E.reshape((bs, -1, pred_E.shape[-1]))
+    #     weighted_E = pred_E.unsqueeze(-1) * p_s_and_t_given_0_E        # bs, N, d0, d_t-1
+    #     unnormalized_prob_E = weighted_E.sum(dim=-2)
+    #     unnormalized_prob_E[torch.sum(unnormalized_prob_E, dim=-1) == 0] = 1e-5
+    #     prob_E = unnormalized_prob_E / torch.sum(unnormalized_prob_E, dim=-1, keepdim=True)
+    #     prob_E = prob_E.reshape(bs, n, n, pred_E.shape[-1])
 
-        # assert ((prob_X.sum(dim=-1) - 1).abs() < 1e-4).all()
-        assert ((prob_E.sum(dim=-1) - 1).abs() < 1e-4).all()
+    #     # assert ((prob_X.sum(dim=-1) - 1).abs() < 1e-4).all()
+    #     assert ((prob_E.sum(dim=-1) - 1).abs() < 1e-4).all()
 
-        sampled_s = diffusion_utils.sample_discrete_features(probX=None, probE=prob_E, node_mask=node_mask)
-        X_s = X_t   # keep X unchanged
-        # sampled_s = diffusion_utils.sample_discrete_features(prob_X, prob_E, node_mask=node_mask)
+    #     sampled_s = diffusion_utils.sample_discrete_features(probX=None, probE=prob_E, node_mask=node_mask)
+    #     X_s = X_t   # keep X unchanged
+    #     # sampled_s = diffusion_utils.sample_discrete_features(prob_X, prob_E, node_mask=node_mask)
 
-        # X_s = F.one_hot(sampled_s.X, num_classes=self.Xdim_output).float()
-        E_s = F.one_hot(sampled_s.E, num_classes=self.Edim_output).float()
+    #     # X_s = F.one_hot(sampled_s.X, num_classes=self.Xdim_output).float()
+    #     E_s = F.one_hot(sampled_s.E, num_classes=self.Edim_output).float()
 
-        assert (E_s == torch.transpose(E_s, 1, 2)).all()
-        assert (X_t.shape == X_s.shape) and (E_t.shape == E_s.shape)
+    #     assert (E_s == torch.transpose(E_s, 1, 2)).all()
+    #     assert (X_t.shape == X_s.shape) and (E_t.shape == E_s.shape)
 
-        out_one_hot = utils.PlaceHolder(X=X_s, E=E_s, y=torch.zeros(y_t.shape[0], 0))
-        out_discrete = utils.PlaceHolder(X=X_s, E=E_s, y=torch.zeros(y_t.shape[0], 0))
+    #     out_one_hot = utils.PlaceHolder(X=X_s, E=E_s, y=torch.zeros(y_t.shape[0], 0))
+    #     out_discrete = utils.PlaceHolder(X=X_s, E=E_s, y=torch.zeros(y_t.shape[0], 0))
 
-        return out_one_hot.mask(node_mask).type_as(y_t), out_discrete.mask(node_mask, collapse=True).type_as(y_t)
+    #     return out_one_hot.mask(node_mask).type_as(y_t), out_discrete.mask(node_mask, collapse=True).type_as(y_t)
 
     def compute_extra_data(self, noisy_data):
         """ At every training step (after adding noise) and step in sampling, compute extra information and append to

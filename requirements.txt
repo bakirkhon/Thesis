@@ -7,7 +7,7 @@ omegaconf==2.3.0
 overrides==7.3.1
 pandas==2.2.3
 pyemd==1.0.0
-PyGSP==0.5.2
+PyGSP==0.6.1
 pytorch_lightning==2.4.0
 scipy==1.13.1
 # setuptools version from Colab (>=75) is fine – no need to pin

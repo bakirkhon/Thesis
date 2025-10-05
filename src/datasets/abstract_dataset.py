@@ -118,13 +118,13 @@ class AbstractDatasetInfos:
         self.input_dims['E'] += ex_extra_molecular_feat.E.size(-1)
         self.input_dims['y'] += ex_extra_molecular_feat.y.size(-1)
 
-        self.print("input_dims X: ", self.input_dims['X'])
-        self.print("input_dims E: ", self.input_dims['E'])
-        self.print("input_dims y: ", self.input_dims['y'])
+        print("input_dims X: ", self.input_dims['X'])
+        print("input_dims E: ", self.input_dims['E'])
+        print("input_dims y: ", self.input_dims['y'])
 
         self.output_dims = {'X': example_batch['x'].size(1),
                             'E': example_batch['edge_attr'].size(1),
                             'y': 0}
-        self.print("output_dims X: ", self.output_dims['X'])
-        self.print("output_dims E: ", self.output_dims['E'])
-        self.print("output_dims y: ", self.output_dims['y'])
+        print("output_dims X: ", self.output_dims['X'])
+        print("output_dims E: ", self.output_dims['E'])
+        print("output_dims y: ", self.output_dims['y'])

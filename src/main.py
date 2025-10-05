@@ -93,7 +93,7 @@ def main(cfg: DictConfig):
 
         # collects dataset info (info of nodes might be redundant and cause issues)
         dataset_infos = FamipackingDatasetInfo(datamodule, dataset_config)
-        train_metrics = TrainAbstractMetricsDiscrete() if cfg.model.type == 'discrete' else TrainAbstractMetrics()
+        train_metrics = TrainAbstractMetricsDiscrete() #if cfg.model.type == 'discrete' else TrainAbstractMetrics()
         visualization_tools = NonMolecularVisualization()
 
         if cfg.model.type == 'discrete' and cfg.model.extra_features is not None:
