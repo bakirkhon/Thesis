@@ -14,7 +14,7 @@ class FamipackingGraphDataset(InMemoryDataset):
         self.famipacking_file='famipacking_2048.pt'
         self.dataset_name=dataset_name
         self.split=split
-        self.num_graphs=2048
+        self.num_graphs=100
         super().__init__(root, transform, pre_transform, pre_filter)
         self.data, self.slices=torch.load(self.processed_paths[0])
 
@@ -29,7 +29,7 @@ class FamipackingGraphDataset(InMemoryDataset):
     
     def download(self):
         if self.dataset_name=='famipacking':
-            raw_url='https://github.com/bakirkhon/Thesis/raw/main/3D-bin-packing-master/dataset/famipacking_2048.pt'
+            raw_url='https://github.com/bakirkhon/Thesis/raw/main/3D-bin-packing-master/dataset/training_dataset_small.pt'
         else:
             raise ValueError(f'Unknown dataset {self.dataset_name}')
         file_path=download_url(raw_url, self.raw_dir)
