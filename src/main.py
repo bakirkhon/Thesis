@@ -14,7 +14,7 @@ from pytorch_lightning.utilities.warnings import PossibleUserWarning
 import utils
 from metrics.abstract_metrics import TrainAbstractMetricsDiscrete, TrainAbstractMetrics
 
-from diffusion_model import LiftedDenoisingDiffusion
+#from diffusion_model import LiftedDenoisingDiffusion
 from diffusion_model_discrete import DiscreteDenoisingDiffusion
 from diffusion.extra_features import DummyExtraFeatures, ExtraFeatures
 
@@ -29,8 +29,8 @@ def get_resume(cfg, model_kwargs):
     resume = cfg.general.test_only
     if cfg.model.type == 'discrete':
         model = DiscreteDenoisingDiffusion.load_from_checkpoint(resume, **model_kwargs)
-    else:
-        model = LiftedDenoisingDiffusion.load_from_checkpoint(resume, **model_kwargs)
+    # else:
+    #     model = LiftedDenoisingDiffusion.load_from_checkpoint(resume, **model_kwargs)
     cfg = model.cfg
     cfg.general.test_only = resume
     cfg.general.name = name
@@ -49,8 +49,8 @@ def get_resume_adaptive(cfg, model_kwargs):
 
     if cfg.model.type == 'discrete':
         model = DiscreteDenoisingDiffusion.load_from_checkpoint(resume_path, **model_kwargs)
-    else:
-        model = LiftedDenoisingDiffusion.load_from_checkpoint(resume_path, **model_kwargs)
+    # else:
+    #     model = LiftedDenoisingDiffusion.load_from_checkpoint(resume_path, **model_kwargs)
     new_cfg = model.cfg
 
     for category in cfg:
@@ -175,8 +175,8 @@ def main(cfg: DictConfig):
 
     if cfg.model.type == 'discrete':
         model = DiscreteDenoisingDiffusion(cfg=cfg, **model_kwargs)
-    else:
-        model = LiftedDenoisingDiffusion(cfg=cfg, **model_kwargs)
+    # else:
+    #     model = LiftedDenoisingDiffusion(cfg=cfg, **model_kwargs)
 
     callbacks = []
     if cfg.train.save_model:

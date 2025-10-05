@@ -129,7 +129,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
     def on_fit_start(self) -> None:
         self.train_iterations = len(self.trainer.datamodule.train_dataloader())
-        self.print("Size of the input features", self.Xdim, self.Edim, self.ydim)
+        #self.print("Size of the input features", self.Xdim, self.Edim, self.ydim)
         if self.local_rank == 0:
             utils.setup_wandb(self.cfg)
 
@@ -165,15 +165,15 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
                 all_pred_E.append(E_pred_discrete.cpu())
                 all_true_E.append(E.cpu())
 
-        all_pred_E = torch.cat(all_pred_E, dim=0)
-        all_true_E = torch.cat(all_true_E, dim=0)
-
+        # Save as a list — no concatenation
         os.makedirs("outputs/final_predictions", exist_ok=True)
-        torch.save({"predicted_E": all_pred_E, "true_E": all_true_E},
-                "outputs/final_predictions/train_set_E_predictions.pt")
+        torch.save({
+            "predicted_E": all_pred_E,  # list of tensors, each (n_i, n_i, num_edge_classes)
+            "true_E": all_true_E
+        }, "outputs/final_predictions/train_set_E_predictions.pt")
 
-        self.print(f"Saved final one-hot E predictions for the train set to: "
-                f"outputs/final_predictions/train_set_E_predictions.pt")
+        self.print(f"Saved {len(all_pred_E)} edge predictions for training set "
+                f"to outputs/final_predictions/train_set_E_predictions.pt")
 
 
     # Reset metrics and start the epoch timer before def training_step
@@ -278,94 +278,94 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         #     self.print(f'Done. Sampling took {time.time() - start:.2f} seconds\n')
         #     print("Validation epoch end ends...")
 
-    # def on_test_epoch_start(self) -> None:
-    #     self.print("Starting test...")
-    #     self.test_nll.reset()
-    #     self.test_X_kl.reset()
-    #     self.test_E_kl.reset()
-    #     self.test_X_logp.reset()
-    #     self.test_E_logp.reset()
-    #     if self.local_rank == 0:
-    #         utils.setup_wandb(self.cfg)
+    def on_test_epoch_start(self) -> None:
+        self.print("Starting test...")
+        self.test_nll.reset()
+        #self.test_X_kl.reset()
+        self.test_E_kl.reset()
+        #self.test_X_logp.reset()
+        self.test_E_logp.reset()
+        if self.local_rank == 0:
+            utils.setup_wandb(self.cfg)
 
-    # def test_step(self, data, i):
-    #     dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
-    #     dense_data = dense_data.mask(node_mask)
-    #     noisy_data = self.apply_noise(dense_data.X, dense_data.E, data.y, node_mask)
-    #     extra_data = self.compute_extra_data(noisy_data)
-    #     pred = self.forward(noisy_data, extra_data, node_mask)
-    #     nll = self.compute_val_loss(pred, noisy_data, dense_data.X, dense_data.E, data.y, node_mask, test=True)
-    #     return {'loss': nll}
+    def test_step(self, data, i):
+        dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
+        dense_data = dense_data.mask(node_mask)
+        noisy_data = self.apply_noise(dense_data.X, dense_data.E, data.y, node_mask)
+        extra_data = self.compute_extra_data(noisy_data)
+        pred = self.forward(noisy_data, extra_data, node_mask)
+        nll = self.compute_val_loss(pred, noisy_data, dense_data.X, dense_data.E, data.y, node_mask, test=True)
+        return {'loss': nll}
 
-    # def on_test_epoch_end(self) -> None:
-    #     batch = next(iter(self.trainer.datamodule.val_dataloader()))
-    #     dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-    #     dense_data = dense_data.mask(node_mask)
-    #     X = dense_data.X
+    def on_test_epoch_end(self) -> None:
+        batch = next(iter(self.trainer.datamodule.val_dataloader()))
+        dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+        dense_data = dense_data.mask(node_mask)
+        X = dense_data.X
 
-    #     """ Measure likelihood on a test set and compute stability metrics. """
-    #     metrics = [self.test_nll.compute(), self.test_X_kl.compute(), self.test_E_kl.compute(),
-    #                self.test_X_logp.compute(), self.test_E_logp.compute()]
-    #     if wandb.run:
-    #         wandb.log({"test/epoch_NLL": metrics[0],
-    #                    #"test/X_kl": metrics[1],
-    #                    "test/E_kl": metrics[2],
-    #                    #"test/X_logp": metrics[3],
-    #                    "test/E_logp": metrics[4]}, commit=False)
+        """ Measure likelihood on a test set and compute stability metrics. """
+        metrics = [self.test_nll.compute(), self.test_E_kl.compute(), #self.test_X_kl.compute(),
+                   self.test_E_logp.compute()] #self.test_X_logp.compute(), 
+        if wandb.run:
+            wandb.log({"test/epoch_NLL": metrics[0],
+                       #"test/X_kl": metrics[1],
+                       "test/E_kl": metrics[1],
+                       #"test/X_logp": metrics[3],
+                       "test/E_logp": metrics[2]}, commit=False)
             
-    #     self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Edge type KL: {metrics[2] :.2f}")
-    #     # self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Atom type KL {metrics[1] :.2f} -- ",
-    #     #            f"Test Edge type KL: {metrics[2] :.2f}")
+        self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Edge type KL: {metrics[1] :.2f}")
+        # self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Atom type KL {metrics[1] :.2f} -- ",
+        #            f"Test Edge type KL: {metrics[2] :.2f}")
 
-    #     test_nll = metrics[0]
-    #     if wandb.run:
-    #         wandb.log({"test/epoch_NLL": test_nll}, commit=False)
+        test_nll = metrics[0]
+        if wandb.run:
+            wandb.log({"test/epoch_NLL": test_nll}, commit=False)
 
-    #     self.print(f'Test loss: {test_nll :.4f}')
+        self.print(f'Test loss: {test_nll :.4f}')
 
-    #     samples_left_to_generate = self.cfg.general.final_model_samples_to_generate
-    #     samples_left_to_save = self.cfg.general.final_model_samples_to_save
-    #     chains_left_to_save = self.cfg.general.final_model_chains_to_save
+        # samples_left_to_generate = self.cfg.general.final_model_samples_to_generate
+        # samples_left_to_save = self.cfg.general.final_model_samples_to_save
+        # chains_left_to_save = self.cfg.general.final_model_chains_to_save
 
-    #     samples = []
-    #     id = 0
-    #     while samples_left_to_generate > 0:
-    #         self.print(f'Samples left to generate: {samples_left_to_generate}/'
-    #                    f'{self.cfg.general.final_model_samples_to_generate}', end='', flush=True)
-    #         bs = 2 * self.cfg.train.batch_size
-    #         to_generate = min(samples_left_to_generate, bs)
-    #         to_save = min(samples_left_to_save, bs)
-    #         chains_save = min(chains_left_to_save, bs)
-    #         samples.extend(self.sample_batch(id, to_generate, num_nodes=None, save_final=to_save,
-    #                                          keep_chain=chains_save, number_chain_steps=self.number_chain_steps, X_fixed=X))
-    #         id += to_generate
-    #         samples_left_to_save -= to_save
-    #         samples_left_to_generate -= to_generate
-    #         chains_left_to_save -= chains_save
-    #     self.print("Saving the generated graphs")
-    #     filename = f'generated_samples1.txt'
-    #     for i in range(2, 10):
-    #         if os.path.exists(filename):
-    #             filename = f'generated_samples{i}.txt'
-    #         else:
-    #             break
-    #     with open(filename, 'w') as f:
-    #         for item in samples:
-    #             f.write(f"N={item[0].shape[0]}\n")
-    #             atoms = item[0].tolist()
-    #             f.write("X: \n")
-    #             for at in atoms:
-    #                 f.write(f"{at} ")
-    #             f.write("\n")
-    #             f.write("E: \n")
-    #             for bond_list in item[1]:
-    #                 for bond in bond_list:
-    #                     f.write(f"{bond} ")
-    #                 f.write("\n")
-    #             f.write("\n")
-    #     self.print("Generated graphs Saved. Computing sampling metrics...")
-    #     self.sampling_metrics(samples, self.name, self.current_epoch, self.val_counter, test=True, local_rank=self.local_rank)
-    #     self.print("Done testing.")
+        # samples = []
+        # id = 0
+        # while samples_left_to_generate > 0:
+        #     self.print(f'Samples left to generate: {samples_left_to_generate}/'
+        #                f'{self.cfg.general.final_model_samples_to_generate}', end='', flush=True)
+        #     bs = 2 * self.cfg.train.batch_size
+        #     to_generate = min(samples_left_to_generate, bs)
+        #     to_save = min(samples_left_to_save, bs)
+        #     chains_save = min(chains_left_to_save, bs)
+        #     samples.extend(self.sample_batch(id, to_generate, num_nodes=None, save_final=to_save,
+        #                                      keep_chain=chains_save, number_chain_steps=self.number_chain_steps, X_fixed=X))
+        #     id += to_generate
+        #     samples_left_to_save -= to_save
+        #     samples_left_to_generate -= to_generate
+        #     chains_left_to_save -= chains_save
+        # self.print("Saving the generated graphs")
+        # filename = f'generated_samples1.txt'
+        # for i in range(2, 10):
+        #     if os.path.exists(filename):
+        #         filename = f'generated_samples{i}.txt'
+        #     else:
+        #         break
+        # with open(filename, 'w') as f:
+        #     for item in samples:
+        #         f.write(f"N={item[0].shape[0]}\n")
+        #         atoms = item[0].tolist()
+        #         f.write("X: \n")
+        #         for at in atoms:
+        #             f.write(f"{at} ")
+        #         f.write("\n")
+        #         f.write("E: \n")
+        #         for bond_list in item[1]:
+        #             for bond in bond_list:
+        #                 f.write(f"{bond} ")
+        #             f.write("\n")
+        #         f.write("\n")
+        # self.print("Generated graphs Saved. Computing sampling metrics...")
+        # self.sampling_metrics(samples, self.name, self.current_epoch, self.val_counter, test=True, local_rank=self.local_rank)
+        # self.print("Done testing.")
 
 
     def kl_prior(self, X, E, node_mask):
@@ -414,9 +414,9 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
         # Compute distributions to compare with KL
         bs, n, d = X.shape
-        print('bs in compute_Lt: ', bs)
-        print('n in computeLt: ', n)
-        print('d in compute Lt: ', d)
+        # print('bs in compute_Lt: ', bs)
+        # print('n in computeLt: ', n)
+        # print('d in compute Lt: ', d)
         prob_true = diffusion_utils.posterior_distributions(X=X, E=E, y=y, X_t=noisy_data['X_t'], E_t=noisy_data['E_t'],
                                                             y_t=noisy_data['y_t'], Qt=Qt, Qsb=Qsb, Qtb=Qtb) # true posterior distr: q(z_{t-1}|z_t, z_0)
         prob_true.E = prob_true.E.reshape((bs, n, n, -1))
@@ -553,21 +553,26 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
         # 1.
         #N = node_mask.sum(1).long()
-        log_pN = 0 #self.node_dist.log_prob(N) # penalize the model if it generates graphs with unlikely node counts
+        log_pN = 0.0 #self.node_dist.log_prob(N) # penalize the model if it generates graphs with unlikely node counts
 
         # 2. The KL between q(z_T | x) and p(z_T) = Marginal(E). Should be close to zero.
         kl_prior = self.kl_prior(X, E, node_mask) # measure how the noised distribution at T q(z_T/x) is close to target distribution p(z_T) 
+        print(kl_prior)
 
         # 3. Diffusion loss
         loss_all_t = self.compute_Lt(X, E, y, pred, noisy_data, node_mask, test)
+        print(loss_all_t)
 
         # 4. Reconstruction loss
         # Compute L0 term : -log p (X, E, y | z_0) = reconstruction loss
         prob0 = self.reconstruction_logp(t, X, E, node_mask)
+        print(prob0)
 
         loss_term_0 = self.val_E_logp(E * prob0.E.log()) #+ self.val_X_logp(X * prob0.X.log())
+        print(loss_term_0)
 
         # Combine terms
+        print("Computing nll...")
         nlls = - log_pN + kl_prior + loss_all_t - loss_term_0
         assert len(nlls.shape) == 1, f'{nlls.shape} has more than only batch dim.'
 
