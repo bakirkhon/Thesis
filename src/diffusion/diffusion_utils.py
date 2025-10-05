@@ -3,7 +3,7 @@ from torch.nn import functional as F
 import numpy as np
 import math
 
-from src.utils import PlaceHolder
+from utils import PlaceHolder
 
 
 def sum_except_batch(x):
@@ -272,7 +272,7 @@ def sample_discrete_features(probX, probE, node_mask):
 
     return PlaceHolder(X=X_t, E=E_t, y=torch.zeros(bs, 0).type_as(X_t))
 
-
+# Section D of the paper
 def compute_posterior_distribution(M, M_t, Qt_M, Qsb_M, Qtb_M):
     ''' M: X or E
         Compute xt @ Qt.T * x0 @ Qsb / x0 @ Qtb @ xt.T
@@ -287,6 +287,7 @@ def compute_posterior_distribution(M, M_t, Qt_M, Qsb_M, Qtb_M):
     right_term = M @ Qsb_M     # (bs, N, d)
     product = left_term * right_term    # (bs, N, d)
 
+    # q(z_t)
     denom = M @ Qtb_M     # (bs, N, d) @ (bs, d, d) = (bs, N, d)
     denom = (denom * M_t).sum(dim=-1)   # (bs, N, d) * (bs, N, d) + sum = (bs, N)
     # denom = product.sum(dim=-1)
@@ -296,9 +297,8 @@ def compute_posterior_distribution(M, M_t, Qt_M, Qsb_M, Qtb_M):
 
     return prob
 
-
-    """ M: X or E
 def compute_batched_over0_posterior_distribution(X_t, Qt, Qsb, Qtb):
+    """ M: X or E
         Compute xt @ Qt.T * x0 @ Qsb / x0 @ Qtb @ xt.T for each possible value of x0
         X_t: bs, n, dt          or bs, n, n, dt
         Qt: bs, d_t-1, dt

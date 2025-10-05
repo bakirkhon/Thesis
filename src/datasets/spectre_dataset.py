@@ -6,7 +6,7 @@ from torch.utils.data import random_split
 import torch_geometric.utils
 from torch_geometric.data import InMemoryDataset, download_url
 
-from src.datasets.abstract_dataset import AbstractDataModule, AbstractDatasetInfos
+from datasets.abstract_dataset import AbstractDataModule, AbstractDatasetInfos
 
 
 class SpectreGraphDataset(InMemoryDataset):

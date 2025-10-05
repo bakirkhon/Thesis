@@ -1,4 +1,4 @@
-import graph_tool as gt
+#import graph_tool as gt
 import os
 import pathlib
 import warnings
@@ -71,25 +71,25 @@ def main(cfg: DictConfig):
 
     if dataset_config["name"] in ['sbm', 'comm20', 'planar', 'famipacking']:
         from datasets.famipacking_dataset import FamipackingGraphDataModule, FamipackingDatasetInfo
-        from datasets.spectre_dataset import SpectreGraphDataModule, SpectreDatasetInfos
-        from analysis.spectre_utils import FamipackingSamplingMetrics, PlanarSamplingMetrics, SBMSamplingMetrics, Comm20SamplingMetrics
+        #from datasets.spectre_dataset import SpectreGraphDataModule, SpectreDatasetInfos
+        from analysis.spectre_utils import FamipackingSamplingMetrics #, PlanarSamplingMetrics, SBMSamplingMetrics, Comm20SamplingMetrics
         from analysis.visualization import NonMolecularVisualization
       
         # create a data module for train/val/test sets with graph size, node and edge types distributions
         if dataset_config['name']=='famipacking':
             datamodule=FamipackingGraphDataModule(cfg)
-        else:
-            datamodule=SpectreGraphDataModule(cfg)
+        #else:
+        #    datamodule=SpectreGraphDataModule(cfg)
 
         # defines metrics for each dataset
         if dataset_config['name'] == 'famipacking':
             sampling_metrics = FamipackingSamplingMetrics(datamodule)
-        elif dataset_config['name'] == 'sbm':
-            sampling_metrics = SBMSamplingMetrics(datamodule)
-        elif dataset_config['name'] == 'comm20':
-            sampling_metrics = Comm20SamplingMetrics(datamodule)
-        else:
-            sampling_metrics = PlanarSamplingMetrics(datamodule)
+        #elif dataset_config['name'] == 'sbm':
+        #    sampling_metrics = SBMSamplingMetrics(datamodule)
+        #elif dataset_config['name'] == 'comm20':
+        #   sampling_metrics = Comm20SamplingMetrics(datamodule)
+        #else:
+        #    sampling_metrics = PlanarSamplingMetrics(datamodule)
 
         # collects dataset info (info of nodes might be redundant and cause issues)
         dataset_infos = FamipackingDatasetInfo(datamodule, dataset_config)

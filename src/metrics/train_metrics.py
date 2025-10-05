@@ -4,7 +4,7 @@ import torch.nn as nn
 from torchmetrics import Metric, MeanSquaredError, MetricCollection
 import time
 import wandb
-from src.metrics.abstract_metrics import SumExceptBatchMetric, SumExceptBatchMSE, SumExceptBatchKL, CrossEntropyMetric, \
+from metrics.abstract_metrics import SumExceptBatchMetric, SumExceptBatchMSE, SumExceptBatchKL, CrossEntropyMetric, \
     ProbabilityMetric, NLL
 
 
@@ -79,7 +79,7 @@ class TrainLossDiscrete(nn.Module):
         log : boolean. """
         #true_X = torch.reshape(true_X, (-1, true_X.size(-1)))  # (bs * n, dx)
         true_E = torch.reshape(true_E, (-1, true_E.size(-1)))  # (bs * n * n, de)
-        masked_pred_X = torch.reshape(masked_pred_X, (-1, masked_pred_X.size(-1)))  # (bs * n, dx)
+        #masked_pred_X = torch.reshape(masked_pred_X, (-1, masked_pred_X.size(-1)))  # (bs * n, dx)
         masked_pred_E = torch.reshape(masked_pred_E, (-1, masked_pred_E.size(-1)))   # (bs * n * n, de)
 
         # Remove masked rows
@@ -93,13 +93,13 @@ class TrainLossDiscrete(nn.Module):
         flat_pred_E = masked_pred_E[mask_E, :]
 
         #loss_X = self.node_loss(flat_pred_X, flat_true_X) if true_X.numel() > 0 else 0.0
-        loss_E = self.edge_loss(flat_pred_E, flat_true_E) if true_E.numel() > 0 else 0.0
+        loss_E = self.edge_loss(flat_pred_E, flat_true_E) if true_E.numel() > 0 else 0.0 # batch cross-entropy (used in gradient descent).
         loss_y = self.y_loss(pred_y, true_y) if true_y.numel() > 0 else 0.0
 
         if log:
             to_log = {"train_loss/batch_CE": (loss_E + loss_y).detach(), # to_log = {"train_loss/batch_CE": (loss_X + loss_E + loss_y).detach(),
                       #"train_loss/X_CE": self.node_loss.compute() if true_X.numel() > 0 else -1,
-                      "train_loss/E_CE": self.edge_loss.compute() if true_E.numel() > 0 else -1,
+                      "train_loss/E_CE": self.edge_loss.compute() if true_E.numel() > 0 else -1, # epoch-aggregated cross-entropy (for reporting).
                       "train_loss/y_CE": self.y_loss.compute() if true_y.numel() > 0 else -1}
             if wandb.run:
                 wandb.log(to_log, commit=True)
@@ -110,6 +110,7 @@ class TrainLossDiscrete(nn.Module):
         for metric in [self.edge_loss, self.y_loss]:
             metric.reset()
 
+    # called by on_train_epoch_end
     def log_epoch_metrics(self):
         #epoch_node_loss = self.node_loss.compute() if self.node_loss.total_samples > 0 else -1
         epoch_edge_loss = self.edge_loss.compute() if self.edge_loss.total_samples > 0 else -1

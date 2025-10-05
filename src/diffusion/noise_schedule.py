@@ -1,7 +1,7 @@
 import numpy as np
 import torch
-from src import utils
-from src.diffusion import diffusion_utils
+import utils
+from diffusion import diffusion_utils
 
 
 class PredefinedNoiseSchedule(torch.nn.Module):
@@ -187,37 +187,37 @@ class MarginalUniformTransition:
         return utils.PlaceHolder(X=q_x, E=q_e, y=q_y)
 
 
-class AbsorbingStateTransition:
-    def __init__(self, abs_state: int, x_classes: int, e_classes: int, y_classes: int):
-        self.X_classes = x_classes
-        self.E_classes = e_classes
-        self.y_classes = y_classes
+# class AbsorbingStateTransition:
+#     def __init__(self, abs_state: int, x_classes: int, e_classes: int, y_classes: int):
+#         self.X_classes = x_classes
+#         self.E_classes = e_classes
+#         self.y_classes = y_classes
 
-        self.u_x = torch.zeros(1, self.X_classes, self.X_classes)
-        self.u_x[:, :, abs_state] = 1
+#         self.u_x = torch.zeros(1, self.X_classes, self.X_classes)
+#         self.u_x[:, :, abs_state] = 1
 
-        self.u_e = torch.zeros(1, self.E_classes, self.E_classes)
-        self.u_e[:, :, abs_state] = 1
+#         self.u_e = torch.zeros(1, self.E_classes, self.E_classes)
+#         self.u_e[:, :, abs_state] = 1
 
-        self.u_y = torch.zeros(1, self.y_classes, self.y_classes)
-        self.u_e[:, :, abs_state] = 1
+#         self.u_y = torch.zeros(1, self.y_classes, self.y_classes)
+#         self.u_e[:, :, abs_state] = 1
 
-    def get_Qt(self, beta_t):
-        """ Returns two transition matrix for X and E"""
-        beta_t = beta_t.unsqueeze(1)
-        q_x = beta_t * self.u_x + (1 - beta_t) * torch.eye(self.X_classes).unsqueeze(0)
-        q_e = beta_t * self.u_e + (1 - beta_t) * torch.eye(self.E_classes).unsqueeze(0)
-        q_y = beta_t * self.u_y + (1 - beta_t) * torch.eye(self.y_classes).unsqueeze(0)
-        return q_x, q_e, q_y
+#     def get_Qt(self, beta_t):
+#         """ Returns two transition matrix for X and E"""
+#         beta_t = beta_t.unsqueeze(1)
+#         q_x = beta_t * self.u_x + (1 - beta_t) * torch.eye(self.X_classes).unsqueeze(0)
+#         q_e = beta_t * self.u_e + (1 - beta_t) * torch.eye(self.E_classes).unsqueeze(0)
+#         q_y = beta_t * self.u_y + (1 - beta_t) * torch.eye(self.y_classes).unsqueeze(0)
+#         return q_x, q_e, q_y
 
-    def get_Qt_bar(self, alpha_bar_t):
-        """ beta_t: (bs)
-        Returns transition matrices for X and E"""
+#     def get_Qt_bar(self, alpha_bar_t):
+#         """ beta_t: (bs)
+#         Returns transition matrices for X and E"""
 
-        alpha_bar_t = alpha_bar_t.unsqueeze(1)
+#         alpha_bar_t = alpha_bar_t.unsqueeze(1)
 
-        q_x = alpha_bar_t * torch.eye(self.X_classes).unsqueeze(0) + (1 - alpha_bar_t) * self.u_x
-        q_e = alpha_bar_t * torch.eye(self.E_classes).unsqueeze(0) + (1 - alpha_bar_t) * self.u_e
-        q_y = alpha_bar_t * torch.eye(self.y_classes).unsqueeze(0) + (1 - alpha_bar_t) * self.u_y
+#         q_x = alpha_bar_t * torch.eye(self.X_classes).unsqueeze(0) + (1 - alpha_bar_t) * self.u_x
+#         q_e = alpha_bar_t * torch.eye(self.E_classes).unsqueeze(0) + (1 - alpha_bar_t) * self.u_e
+#         q_y = alpha_bar_t * torch.eye(self.y_classes).unsqueeze(0) + (1 - alpha_bar_t) * self.u_y
 
-        return q_x, q_e, q_y
+#         return q_x, q_e, q_y

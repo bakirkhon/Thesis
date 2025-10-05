@@ -5,8 +5,8 @@ import torch
 import os
 
 # Settings for data collection
-num_samples=2048
-output_dir='training_dataset'
+num_samples=100
+output_dir='Thesis/3D-bin-packing-master/dataset'
 os.makedirs(output_dir,exist_ok=True)
 
 start = time.time()
@@ -239,7 +239,7 @@ while valid_count<num_samples and attempts<max_attempts:
     # for i,row in enumerate(E):
     #     print(f'Row {i}: {row}')
 
-torch.save(dataset, 'training_dataset/training_dataset.pt')               
-np.savez_compressed('training_dataset/training_dataset.npz', data=np.array(np_dataset, dtype=object))
+torch.save(dataset, 'Thesis/3D-bin-packing-master/dataset/training_dataset_small.pt')               
+np.savez_compressed('Thesis/3D-bin-packing-master/dataset/training_dataset_small.npz', data=np.array(np_dataset, dtype=object))
 
 print('Done')

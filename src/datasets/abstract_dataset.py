@@ -1,5 +1,5 @@
-from src.diffusion.distributions import DistributionNodes
-import src.utils as utils
+from diffusion.distributions import DistributionNodes
+import utils
 import torch
 import pytorch_lightning as pl
 from torch_geometric.loader import DataLoader
@@ -72,23 +72,23 @@ class AbstractDataModule(LightningDataset):
         return d
 
 
-class MolecularDataModule(AbstractDataModule):
-    def valency_count(self, max_n_nodes):
-        valencies = torch.zeros(3 * max_n_nodes - 2)   # Max valency possible if everything is connected
+# class MolecularDataModule(AbstractDataModule):
+#     def valency_count(self, max_n_nodes):
+#         valencies = torch.zeros(3 * max_n_nodes - 2)   # Max valency possible if everything is connected
 
-        # No bond, single bond, double bond, triple bond, aromatic bond
-        multiplier = torch.tensor([0, 1, 2, 3, 1.5])
+#         # No bond, single bond, double bond, triple bond, aromatic bond
+#         multiplier = torch.tensor([0, 1, 2, 3, 1.5])
 
-        for data in self.train_dataloader():
-            n = data.x.shape[0]
+#         for data in self.train_dataloader():
+#             n = data.x.shape[0]
 
-            for atom in range(n):
-                edges = data.edge_attr[data.edge_index[0] == atom]
-                edges_total = edges.sum(dim=0)
-                valency = (edges_total * multiplier).sum()
-                valencies[valency.long().item()] += 1
-        valencies = valencies / valencies.sum()
-        return valencies
+#             for atom in range(n):
+#                 edges = data.edge_attr[data.edge_index[0] == atom]
+#                 edges_total = edges.sum(dim=0)
+#                 valency = (edges_total * multiplier).sum()
+#                 valencies[valency.long().item()] += 1
+#         valencies = valencies / valencies.sum()
+#         return valencies
 
 
 class AbstractDatasetInfos:
@@ -118,6 +118,13 @@ class AbstractDatasetInfos:
         self.input_dims['E'] += ex_extra_molecular_feat.E.size(-1)
         self.input_dims['y'] += ex_extra_molecular_feat.y.size(-1)
 
+        self.print("input_dims X: ", self.input_dims['X'])
+        self.print("input_dims E: ", self.input_dims['E'])
+        self.print("input_dims y: ", self.input_dims['y'])
+
         self.output_dims = {'X': example_batch['x'].size(1),
                             'E': example_batch['edge_attr'].size(1),
                             'y': 0}
+        self.print("output_dims X: ", self.output_dims['X'])
+        self.print("output_dims E: ", self.output_dims['E'])
+        self.print("output_dims y: ", self.output_dims['y'])

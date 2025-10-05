@@ -3,7 +3,7 @@
 # Adapted from https://github.com/lrjconan/GRAN/ which in turn is adapted from https://github.com/JiaxuanYou/graph-generation
 #
 ###############################################################################
-import graph_tool.all as gt
+#import graph_tool.all as gt
 ##Navigate to the ./util/orca directory and compile orca.cpp
 # g++ -O2 -std=c++11 -o orca orca.cpp
 import os
@@ -860,25 +860,25 @@ class SpectreSamplingMetrics(nn.Module):
         pass
 
 
-class Comm20SamplingMetrics(SpectreSamplingMetrics):
-    def __init__(self, datamodule):
-        super().__init__(datamodule=datamodule,
-                         compute_emd=True,
-                         metrics_list=['degree', 'clustering', 'orbit'])
+# class Comm20SamplingMetrics(SpectreSamplingMetrics):
+#     def __init__(self, datamodule):
+#         super().__init__(datamodule=datamodule,
+#                          compute_emd=True,
+#                          metrics_list=['degree', 'clustering', 'orbit'])
 
 
-class PlanarSamplingMetrics(SpectreSamplingMetrics):
-    def __init__(self, datamodule):
-        super().__init__(datamodule=datamodule,
-                         compute_emd=False,
-                         metrics_list=['degree', 'clustering', 'orbit', 'spectre', 'planar'])
+# class PlanarSamplingMetrics(SpectreSamplingMetrics):
+#     def __init__(self, datamodule):
+#         super().__init__(datamodule=datamodule,
+#                          compute_emd=False,
+#                          metrics_list=['degree', 'clustering', 'orbit', 'spectre', 'planar'])
 
 
-class SBMSamplingMetrics(SpectreSamplingMetrics):
-    def __init__(self, datamodule):
-        super().__init__(datamodule=datamodule,
-                         compute_emd=False,
-                         metrics_list=['degree', 'clustering', 'orbit', 'spectre', 'sbm'])
+# class SBMSamplingMetrics(SpectreSamplingMetrics):
+#     def __init__(self, datamodule):
+#         super().__init__(datamodule=datamodule,
+#                          compute_emd=False,
+#                          metrics_list=['degree', 'clustering', 'orbit', 'spectre', 'sbm'])
 
 class FamipackingSamplingMetrics(SpectreSamplingMetrics):
     def __init__(self, datamodule):

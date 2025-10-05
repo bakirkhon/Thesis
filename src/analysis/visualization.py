@@ -1,13 +1,13 @@
 import os
 
-from rdkit import Chem
-from rdkit.Chem import Draw, AllChem
-from rdkit.Geometry import Point3D
-from rdkit import RDLogger
+# from rdkit import Chem
+# from rdkit.Chem import Draw, AllChem
+# from rdkit.Geometry import Point3D
+# from rdkit import RDLogger
 import imageio
 import networkx as nx
 import numpy as np
-import rdkit.Chem
+# import rdkit.Chem
 import wandb
 import matplotlib.pyplot as plt
 

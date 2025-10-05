@@ -112,6 +112,12 @@ class FamipackingGraphDataModule(AbstractDataModule):
                     'test': FamipackingGraphDataset(dataset_name=self.cfg.dataset.name,
                                                      split='test', root=root_path)}
                 
+        print("train first graph's nodes: ", datasets['train'][0].x)
+        print("train first edge (source, target): ", datasets['train'][0].edge_index[:, 0])
+        print("train first edge feature: ", datasets['train'][0].edge_attr[0])
+        print("train target (graph-level) y: ", datasets['train'][0].y)            
+        print("train number of nodes: ", datasets['train'][0].n_nodes)                   
+
         super().__init__(cfg, datasets)
         self.inner=self.train_dataset
 
@@ -124,7 +130,9 @@ class FamipackingDatasetInfo(AbstractDatasetInfos):
         self.datamodule=datamodule
         self.name='famipacking_graphs'
         self.n_nodes=self.datamodule.node_counts()
+        self.print("Distribution of node counts: ", self.n_nodes)
         self.node_types=torch.tensor([1]) # neglecting the node types             
         self.edge_types=self.datamodule.edge_counts()
+        self.print("Distribtution of edge types: ", self.edge_types)
         super().complete_infos(self.n_nodes, self.node_types)
 
