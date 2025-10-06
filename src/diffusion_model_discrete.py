@@ -643,58 +643,58 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         y = torch.hstack((noisy_data['y_t'], extra_data.y)).float()
         return self.model(X, E, y, node_mask)
 
-@torch.no_grad()
-def predict_edges(self, X_fixed: torch.Tensor, number_chain_steps: int = 50, save_path: str = "Thsesis/predictions"):
-    """
-    Predict edges given fixed node features X_fixed, and save X and E as NumPy arrays.
-    Args:
-        X_fixed: (n, dx) tensor of node features.
-        number_chain_steps: number of reverse diffusion steps.
-        save_path: folder to save .npy files.
-    Returns:
-        E_pred: predicted adjacency tensors (bs, n, n, de)
-    """
-    import os
-    import numpy as np
+    @torch.no_grad()
+    def predict_edges(self, X_fixed: torch.Tensor, number_chain_steps: int = 50, save_path: str = "Thsesis/predictions"):
+        """
+        Predict edges given fixed node features X_fixed, and save X and E as NumPy arrays.
+        Args:
+            X_fixed: (n, dx) tensor of node features.
+            number_chain_steps: number of reverse diffusion steps.
+            save_path: folder to save .npy files.
+        Returns:
+            E_pred: predicted adjacency tensors (bs, n, n, de)
+        """
+        import os
+        import numpy as np
 
-    # Ensure output directory exists
-    os.makedirs(save_path, exist_ok=True)
+        # Ensure output directory exists
+        os.makedirs(save_path, exist_ok=True)
 
-    # Move to correct device
-    X_fixed = X_fixed.to(self.device)
-    bs=1
-    n_max, _,  = X_fixed.shape
-    node_mask = torch.ones(bs, n_max, dtype=torch.bool, device=self.device) # no padded nodes
+        # Move to correct device
+        X_fixed = X_fixed.to(self.device)
+        bs=1
+        n_max, _,  = X_fixed.shape
+        node_mask = torch.ones(bs, n_max, dtype=torch.bool, device=self.device) # no padded nodes
 
-    # Start from pure edge noise
-    z_T = diffusion_utils.sample_discrete_feature_noise(limit_dist=self.limit_dist, node_mask=node_mask)
-    E, y = z_T.E, z_T.y
+        # Start from pure edge noise
+        z_T = diffusion_utils.sample_discrete_feature_noise(limit_dist=self.limit_dist, node_mask=node_mask)
+        E, y = z_T.E, z_T.y
 
-    # Reverse diffusion process
-    for s_int in reversed(range(0, self.T)):
-        s_array = s_int * torch.ones((bs, 1), device=self.device)
-        t_array = s_array + 1
-        s_norm = s_array / self.T
-        t_norm = t_array / self.T
+        # Reverse diffusion process
+        for s_int in reversed(range(0, self.T)):
+            s_array = s_int * torch.ones((bs, 1), device=self.device)
+            t_array = s_array + 1
+            s_norm = s_array / self.T
+            t_norm = t_array / self.T
 
-        sampled_s, _ = self.sample_p_zs_given_zt(s_norm, t_norm, X_fixed, E, y, node_mask)
-        E, y = sampled_s.E, sampled_s.y
+            sampled_s, _ = self.sample_p_zs_given_zt(s_norm, t_norm, X_fixed, E, y, node_mask)
+            E, y = sampled_s.E, sampled_s.y
 
-    # ---- Convert to numpy ----
-    X_np = X_fixed.detach().cpu().numpy()
-    E_np = E.detach().cpu().numpy()
+        # ---- Convert to numpy ----
+        X_np = X_fixed.detach().cpu().numpy()
+        E_np = E.detach().cpu().numpy()
 
-    # ---- Save to files ----
-    np.save(os.path.join(save_path, "X_fixed.npy"), X_np)
-    np.save(os.path.join(save_path, "E_generated.npy"), E_np)
+        # ---- Save to files ----
+        np.save(os.path.join(save_path, "X_fixed.npy"), X_np)
+        np.save(os.path.join(save_path, "E_generated.npy"), E_np)
 
-    # Optional: also save readable text files
-    np.savetxt(os.path.join(save_path, "X_fixed.csv"), X_np.reshape(bs * n_max, -1), delimiter=",")
-    np.savetxt(os.path.join(save_path, "E_generated.csv"), E_np.reshape(bs * n_max, -1), delimiter=",")
+        # Optional: also save readable text files
+        np.savetxt(os.path.join(save_path, "X_fixed.csv"), X_np.reshape(bs * n_max, -1), delimiter=",")
+        np.savetxt(os.path.join(save_path, "E_generated.csv"), E_np.reshape(bs * n_max, -1), delimiter=",")
 
-    print(f"Saved X_fixed and E_generated to folder: {save_path}")
+        print(f"Saved X_fixed and E_generated to folder: {save_path}")
 
-    return E_np
+        return E_np
 
     # def sample_batch(self, batch_id: int, batch_size: int, keep_chain: int, number_chain_steps: int,
     #                  save_final: int, X_fixed, num_nodes=None):
