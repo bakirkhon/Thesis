@@ -343,7 +343,7 @@ def mask_distributions(true_E, pred_E, node_mask):
     # row_X = torch.zeros(true_X.size(-1), dtype=torch.float, device=true_X.device)
     # row_X[0] = 1.
     row_E = torch.zeros(true_E.size(-1), dtype=torch.float, device=true_E.device)
-    row_E[0] = 7.
+    row_E[0] = 0.0
 
     diag_mask = ~torch.eye(node_mask.size(1), device=node_mask.device, dtype=torch.bool).unsqueeze(0)
     # true_X[~node_mask] = row_X

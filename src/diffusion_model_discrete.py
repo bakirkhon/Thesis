@@ -384,8 +384,8 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         # Compute transition probabilities
         # probX = X @ Qtb.X  # (bs, n, dx_out)
         probE = E @ Qtb.E.unsqueeze(1)  # (bs, n, n, de_out)
-        print("E[0]: ", E[0])
-        print("probE[0]: ",probE[0])
+        # print("E[0]: ", E[0])
+        # print("probE[0]: ",probE[0])
         # assert probX.shape == X.shape
 
         bs, n, _, de = probE.shape
@@ -404,8 +404,8 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         #                                                                               node_mask=node_mask)
 
         #kl_distance_X = F.kl_div(input=probX.log(), target=limit_dist_X, reduction='none')
-        print("limit_dist_E: ", limit_dist_E[0])
-        print("probE[0]: ",probE[0])
+        print("len limit_dist_E: ", len(limit_dist_E[0]))
+        # print("probE[0]: ",probE[0])
         kl_distance_E = F.kl_div(input=probE.log(), target=limit_dist_E, reduction='none')
 
         return diffusion_utils.sum_except_batch(kl_distance_E) #diffusion_utils.sum_except_batch(kl_distance_X) + \
@@ -475,11 +475,13 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         # Normalize predictions
         probE0 = F.softmax(pred0.E, dim=-1)
         proby0 = F.softmax(pred0.y, dim=-1)
+        print("reconstruction logp E0: ", probE0[0])
 
         # Set masked rows to arbitrary values that don't contribute to loss
         diag_mask = torch.eye(probE0.size(1)).type_as(probE0).bool()
         diag_mask = diag_mask.unsqueeze(0).expand(probE0.size(0), -1, -1)
-        probE0[diag_mask] = torch.ones(self.Edim_output).type_as(probE0)
+        probE0[diag_mask] = torch.zeros(self.Edim_output).type_as(probE0)
+        print("reconstruction logp masked E0: ", probE0[0])
 
         return utils.PlaceHolder(X=X0, E=probE0, y=proby0)
         # probX0 = X @ Q0.X  # (bs, n, dx_out)
@@ -569,7 +571,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
         # 2. The KL between q(z_T | x) and p(z_T) = Marginal(E). Should be close to zero.
         kl_prior = self.kl_prior(X, E, node_mask) # measure how the noised distribution at T q(z_T/x) is close to target distribution p(z_T) 
-        print('kl_prior per graph: ',kl_prior)
+        # print('kl_prior per graph: ',kl_prior)
 
         # 3. Diffusion loss
         loss_all_t = self.compute_Lt(X, E, y, pred, noisy_data, node_mask, test)
@@ -578,8 +580,6 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         # 4. Reconstruction loss
         # Compute L0 term : -log p (X, E, y | z_0) = reconstruction loss
         prob0 = self.reconstruction_logp(t, X, E, node_mask)
-        print("E[0]: ", E[0])
-        print("prob0.E[0]: ",prob0.E[0])
 
         loss_term_0 = self.val_E_logp(E * prob0.E.log()) #+ self.val_X_logp(X * prob0.X.log())
         print("loss_term_0: ",loss_term_0)
