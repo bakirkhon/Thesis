@@ -104,8 +104,8 @@ class TrainLossDiscrete(nn.Module):
             if wandb.run:
                 wandb.log(to_log, commit=True)
         return self.lambda_train[0] * loss_E + self.lambda_train[1] * loss_y #loss_X + 
-
     def reset(self):
+
         #for metric in [self.node_loss, self.edge_loss, self.y_loss]:
         for metric in [self.edge_loss, self.y_loss]:
             metric.reset()
@@ -114,10 +114,10 @@ class TrainLossDiscrete(nn.Module):
     def log_epoch_metrics(self):
         #epoch_node_loss = self.node_loss.compute() if self.node_loss.total_samples > 0 else -1
         epoch_edge_loss = self.edge_loss.compute() if self.edge_loss.total_samples > 0 else -1
-        epoch_y_loss = self.train_y_loss.compute() if self.y_loss.total_samples > 0 else -1
+        #epoch_y_loss = self.y_loss.compute() if self.y_loss.total_samples > 0 else -1
 
-        to_log = {"train_epoch/E_CE": epoch_edge_loss,
-                  "train_epoch/y_CE": epoch_y_loss}
+        to_log = {"train_epoch/E_CE": epoch_edge_loss}
+                  #"train_epoch/y_CE": epoch_y_loss}
 
         # to_log = {"train_epoch/x_CE": epoch_node_loss,
         #           "train_epoch/E_CE": epoch_edge_loss,
@@ -127,5 +127,38 @@ class TrainLossDiscrete(nn.Module):
 
         return to_log
 
+    # called by on_val_epoch_end
+    def log_val_epoch_metrics(self):
+        #epoch_node_loss = self.node_loss.compute() if self.node_loss.total_samples > 0 else -1
+        epoch_val_edge_loss = self.edge_loss.compute() if self.edge_loss.total_samples > 0 else -1
+        #epoch_val_y_loss = self._y_loss.compute() if self.y_loss.total_samples > 0 else -1
+
+        to_log_val = {"val_epoch/E_CE": epoch_val_edge_loss}
+        #          "val_epoch/y_CE": epoch_val_y_loss}
+
+        # to_log = {"train_epoch/x_CE": epoch_node_loss,
+        #           "train_epoch/E_CE": epoch_edge_loss,
+        #           "train_epoch/y_CE": epoch_y_loss}
+        if wandb.run:
+            wandb.log(to_log_val, commit=False)
+
+        return to_log_val        
+    
+    # called by on_test_epoch_end
+    def log_test_epoch_metrics(self):
+        #epoch_node_loss = self.node_loss.compute() if self.node_loss.total_samples > 0 else -1
+        epoch_test_edge_loss = self.edge_loss.compute() if self.edge_loss.total_samples > 0 else -1
+        #epoch_test_y_loss = self.train_y_loss.compute() if self.y_loss.total_samples > 0 else -1
+
+        to_log_test = {"test_epoch/E_CE": epoch_test_edge_loss}
+        #          "test_epoch/y_CE": epoch_test_y_loss}
+
+        # to_log = {"train_epoch/x_CE": epoch_node_loss,
+        #           "train_epoch/E_CE": epoch_edge_loss,
+        #           "train_epoch/y_CE": epoch_y_loss}
+        if wandb.run:
+            wandb.log(to_log_test, commit=False)
+
+        return to_log_test            
 
 

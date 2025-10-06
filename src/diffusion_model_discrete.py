@@ -96,7 +96,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         self.val_iterations = None
         self.log_every_steps = cfg.general.log_every_steps
         self.number_chain_steps = cfg.general.number_chain_steps
-        self.best_val_nll = 1e8
+        self.best_val_loss = 1e8
         self.val_counter = 0
 
     def training_step(self, data, i):
@@ -186,7 +186,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
     def on_train_epoch_end(self) -> None:
         to_log = self.train_loss.log_epoch_metrics()
         self.print(f"Epoch {self.current_epoch}: E_CE: {to_log['train_epoch/E_CE'] :.3f} --"
-                   f" y_CE: {to_log['train_epoch/y_CE'] :.3f}"
+                   #f" y_CE: {to_log['train_epoch/y_CE'] :.3f}"
                    f" -- {time.time() - self.start_epoch_time:.1f}s ")
         # self.print(f"Epoch {self.current_epoch}: X_CE: {to_log['train_epoch/x_CE'] :.3f}"
         #               f" -- E_CE: {to_log['train_epoch/E_CE'] :.3f} --"
@@ -227,23 +227,23 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         # return {'loss': nll}
 
     def on_validation_epoch_end(self) -> None:
-        outputs = self.trainer.callback_metrics
-        avg_val_loss = outputs["val_loss"]
+        to_log_val = self.train_loss.log_val_epoch_metrics()
+        self.print(f"Epoch {self.current_epoch}: val_E_CE: {to_log_val['val_epoch/E_CE'] :.3f} --")
+        # self.print(f"Epoch {self.current_epoch}: X_CE: {to_log['train_epoch/x_CE'] :.3f}"
+        #               f" -- E_CE: {to_log['train_epoch/E_CE'] :.3f} --"
+        #               f" y_CE: {to_log['train_epoch/y_CE'] :.3f}"
+        #               f" -- {time.time() - self.start_epoch_time:.1f}s ")
+        avg_val_loss = to_log_val['val_epoch/E_CE']
         
-        self.print(f"Epoch {self.current_epoch}: Validation CE Loss = {avg_val_loss:.4f}")
-
         if wandb.run:
-            wandb.log({"val/epoch_CE": avg_val_loss}, commit=False)
+            wandb.log({"val/epoch_E_CE": avg_val_loss}, commit=False)
 
         # Update best validation loss
-        if not hasattr(self, "best_val_loss"):
-            self.best_val_loss = float("inf")
         if avg_val_loss < self.best_val_loss:
             self.best_val_loss = avg_val_loss
 
         self.print(f"Best Validation CE Loss so far: {self.best_val_loss:.4f}\n")
 
-        self.val_counter += 1
         # batch = next(iter(self.trainer.datamodule.val_dataloader()))
         # dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
         # dense_data = dense_data.mask(node_mask)
@@ -327,14 +327,18 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         return {"test_loss": loss}
 
     def on_test_epoch_end(self) -> None:
-        outputs = self.trainer.callback_metrics
-        avg_test_loss = outputs["test_loss"]
+        to_log_test = self.train_loss.log_test_epoch_metrics()
+        self.print(f"Epoch {self.current_epoch}: test_E_CE: {to_log_test['test_epoch/E_CE'] :.3f} --")
+        # self.print(f"Epoch {self.current_epoch}: X_CE: {to_log['train_epoch/x_CE'] :.3f}"
+        #               f" -- E_CE: {to_log['train_epoch/E_CE'] :.3f} --"
+        #               f" y_CE: {to_log['train_epoch/y_CE'] :.3f}"
+        #               f" -- {time.time() - self.start_epoch_time:.1f}s ")
+        avg_test_loss = to_log_test['test_epoch/E_CE']
         
-        self.print(f"Epoch {self.current_epoch}: Test CE Loss = {avg_test_loss:.4f}")
-
         if wandb.run:
-            wandb.log({"test/epoch_CE": avg_test_loss}, commit=False)
+            wandb.log({"test/epoch_E_CE": avg_test_loss}, commit=False)
 
+    
         # batch = next(iter(self.trainer.datamodule.val_dataloader()))
         # dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
         # dense_data = dense_data.mask(node_mask)
