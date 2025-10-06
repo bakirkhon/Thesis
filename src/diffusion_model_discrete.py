@@ -375,30 +375,37 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         compute it so that you see it when you've made a mistake in your noise schedule.
         """
         # Compute the last alpha value, alpha_T.
-        ones = torch.ones((X.size(0), 1), device=X.device)
+        ones = torch.ones((E.size(0), 1), device=E.device)
         Ts = self.T * ones
         alpha_t_bar = self.noise_schedule.get_alpha_bar(t_int=Ts)  # (bs, 1)
 
         Qtb = self.transition_model.get_Qt_bar(alpha_t_bar, self.device)
 
         # Compute transition probabilities
-        probX = X @ Qtb.X  # (bs, n, dx_out)
+        # probX = X @ Qtb.X  # (bs, n, dx_out)
         probE = E @ Qtb.E.unsqueeze(1)  # (bs, n, n, de_out)
-        assert probX.shape == X.shape
+        print("E[0]: ", E[0])
+        print("probE[0]: ",probE[0])
+        # assert probX.shape == X.shape
 
-        bs, n, _, _ = probE.shape
+        bs, n, _, de = probE.shape
 
-        limit_X = self.limit_dist.X[None, None, :].expand(bs, n, -1).type_as(probX)
+        #limit_X = self.limit_dist.X[None, None, :].expand(bs, n, -1).type_as(probX)
         limit_E = self.limit_dist.E[None, None, None, :].expand(bs, n, n, -1).type_as(probE)
 
         # Make sure that masked rows do not contribute to the loss
-        limit_dist_X, limit_dist_E, probX, probE = diffusion_utils.mask_distributions(true_X=limit_X.clone(),
-                                                                                      true_E=limit_E.clone(),
-                                                                                      pred_X=probX,
-                                                                                      pred_E=probE,
-                                                                                      node_mask=node_mask)
+        limit_dist_E, probE = diffusion_utils.mask_distributions(true_E=limit_E.clone(),
+                                                                 pred_E=probE,
+                                                                 node_mask=node_mask)
+        # limit_dist_X, limit_dist_E, probX, probE = diffusion_utils.mask_distributions(true_X=limit_X.clone(),
+        #                                                                               true_E=limit_E.clone(),
+        #                                                                               pred_X=probX,
+        #                                                                               pred_E=probE,
+        #                                                                               node_mask=node_mask)
 
         #kl_distance_X = F.kl_div(input=probX.log(), target=limit_dist_X, reduction='none')
+        print("limit_dist_E: ", limit_dist_E[0])
+        print("probE[0]: ",probE[0])
         kl_distance_E = F.kl_div(input=probE.log(), target=limit_dist_E, reduction='none')
 
         return diffusion_utils.sum_except_batch(kl_distance_E) #diffusion_utils.sum_except_batch(kl_distance_X) + \
@@ -413,10 +420,10 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         Qt = self.transition_model.get_Qt(noisy_data['beta_t'], self.device)           # Q_t
 
         # Compute distributions to compare with KL
-        bs, n, d = X.shape
+        bs, n, _, de = E.shape
         # print('bs in compute_Lt: ', bs)
         # print('n in computeLt: ', n)
-        # print('d in compute Lt: ', d)
+        # print('de in compute Lt: ', de)
         prob_true = diffusion_utils.posterior_distributions(X=X, E=E, y=y, X_t=noisy_data['X_t'], E_t=noisy_data['E_t'],
                                                             y_t=noisy_data['y_t'], Qt=Qt, Qsb=Qsb, Qtb=Qtb) # true posterior distr: q(z_{t-1}|z_t, z_0)
         prob_true.E = prob_true.E.reshape((bs, n, n, -1))
@@ -426,11 +433,14 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         prob_pred.E = prob_pred.E.reshape((bs, n, n, -1))
 
         # Reshape and filter masked rows
-        prob_true_X, prob_true_E, prob_pred.X, prob_pred.E = diffusion_utils.mask_distributions(true_X=prob_true.X,
-                                                                                                true_E=prob_true.E,
-                                                                                                pred_X=prob_pred.X,
-                                                                                                pred_E=prob_pred.E,
-                                                                                                node_mask=node_mask)
+        prob_true_E, prob_pred.E = diffusion_utils.mask_distributions(true_E=prob_true.E,
+                                                                      pred_E=prob_pred.E,
+                                                                      node_mask=node_mask)
+        # prob_true_X, prob_true_E, prob_pred.X, prob_pred.E = diffusion_utils.mask_distributions(true_X=prob_true.X,
+        #                                                                                         true_E=prob_true.E,
+        #                                                                                         pred_X=prob_pred.X,
+        #                                                                                         pred_E=prob_pred.E,
+        #                                                                                         node_mask=node_mask)
         # kl_x = (self.test_X_kl if test else self.val_X_kl)(prob_true.X, torch.log(prob_pred.X))
         kl_e = (self.test_E_kl if test else self.val_E_kl)(prob_true.E, torch.log(prob_pred.E))
         return self.T * kl_e
@@ -557,19 +567,20 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
         # 2. The KL between q(z_T | x) and p(z_T) = Marginal(E). Should be close to zero.
         kl_prior = self.kl_prior(X, E, node_mask) # measure how the noised distribution at T q(z_T/x) is close to target distribution p(z_T) 
-        print(kl_prior)
+        print('kl_prior per graph: ',kl_prior)
 
         # 3. Diffusion loss
         loss_all_t = self.compute_Lt(X, E, y, pred, noisy_data, node_mask, test)
-        print(loss_all_t)
+        print('loss_all_t: ',loss_all_t)
 
         # 4. Reconstruction loss
         # Compute L0 term : -log p (X, E, y | z_0) = reconstruction loss
         prob0 = self.reconstruction_logp(t, X, E, node_mask)
-        print(prob0)
+        print("E[0]: ", E[0])
+        print("prob0.E[0]: ",prob0.E[0])
 
         loss_term_0 = self.val_E_logp(E * prob0.E.log()) #+ self.val_X_logp(X * prob0.X.log())
-        print(loss_term_0)
+        print("loss_term_0: ",loss_term_0)
 
         # Combine terms
         print("Computing nll...")
@@ -582,7 +593,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         if wandb.run:
             wandb.log({"kl prior": kl_prior.mean(),
                        "Estimator loss terms": loss_all_t.mean(),
-                       "log_pn": log_pN.mean(),
+                       #"log_pn": log_pN.mean(),
                        "loss_term_0": loss_term_0,
                        'batch_test_nll' if test else 'val_nll': nll}, commit=False)
         return nll

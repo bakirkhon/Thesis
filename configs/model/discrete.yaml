@@ -2,7 +2,7 @@
 type: 'discrete'
 transition: 'marginal'                          # uniform or marginal
 model: 'graph_tf'
-diffusion_steps: 100 #500
+diffusion_steps: 50 #500
 diffusion_noise_schedule: 'cosine'              # 'cosine', 'polynomial_2'
 n_layers: 5
 

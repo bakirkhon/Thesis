@@ -328,7 +328,8 @@ def compute_batched_over0_posterior_distribution(X_t, Qt, Qsb, Qtb):
     return out
 
 
-def mask_distributions(true_X, true_E, pred_X, pred_E, node_mask):
+# def mask_distributions(true_X, true_E, pred_X, pred_E, node_mask):
+def mask_distributions(true_E, pred_E, node_mask):
     """
     Set masked rows to arbitrary distributions, so it doesn't contribute to loss
     :param true_X: bs, n, dx_out
@@ -339,28 +340,29 @@ def mask_distributions(true_X, true_E, pred_X, pred_E, node_mask):
     :return: same sizes as input
     """
 
-    row_X = torch.zeros(true_X.size(-1), dtype=torch.float, device=true_X.device)
-    row_X[0] = 1.
+    # row_X = torch.zeros(true_X.size(-1), dtype=torch.float, device=true_X.device)
+    # row_X[0] = 1.
     row_E = torch.zeros(true_E.size(-1), dtype=torch.float, device=true_E.device)
-    row_E[0] = 1.
+    row_E[0] = 7.
 
     diag_mask = ~torch.eye(node_mask.size(1), device=node_mask.device, dtype=torch.bool).unsqueeze(0)
-    true_X[~node_mask] = row_X
-    pred_X[~node_mask] = row_X
+    # true_X[~node_mask] = row_X
+    # pred_X[~node_mask] = row_X
     true_E[~(node_mask.unsqueeze(1) * node_mask.unsqueeze(2) * diag_mask), :] = row_E
     pred_E[~(node_mask.unsqueeze(1) * node_mask.unsqueeze(2) * diag_mask), :] = row_E
 
-    true_X = true_X + 1e-7
-    pred_X = pred_X + 1e-7
+    # true_X = true_X + 1e-7
+    # pred_X = pred_X + 1e-7
     true_E = true_E + 1e-7
     pred_E = pred_E + 1e-7
 
-    true_X = true_X / torch.sum(true_X, dim=-1, keepdim=True)
-    pred_X = pred_X / torch.sum(pred_X, dim=-1, keepdim=True)
+    # true_X = true_X / torch.sum(true_X, dim=-1, keepdim=True)
+    # pred_X = pred_X / torch.sum(pred_X, dim=-1, keepdim=True)
     true_E = true_E / torch.sum(true_E, dim=-1, keepdim=True)
     pred_E = pred_E / torch.sum(pred_E, dim=-1, keepdim=True)
 
-    return true_X, true_E, pred_X, pred_E
+    return true_E, pred_E
+    # return true_X, true_E, pred_X, pred_E
 
 
 def posterior_distributions(X, E, y, X_t, E_t, y_t, Qt, Qsb, Qtb):
