@@ -436,6 +436,8 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         prob_true_E, prob_pred.E = diffusion_utils.mask_distributions(true_E=prob_true.E,
                                                                       pred_E=prob_pred.E,
                                                                       node_mask=node_mask)
+        print("prob_true.E[0]: ",prob_true.E[0])
+        print("prob_pred.E[0]: ",prob_pred.E[0])
         # prob_true_X, prob_true_E, prob_pred.X, prob_pred.E = diffusion_utils.mask_distributions(true_X=prob_true.X,
         #                                                                                         true_E=prob_true.E,
         #                                                                                         pred_X=prob_pred.X,
