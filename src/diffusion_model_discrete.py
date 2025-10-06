@@ -404,7 +404,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         #                                                                               node_mask=node_mask)
 
         #kl_distance_X = F.kl_div(input=probX.log(), target=limit_dist_X, reduction='none')
-        print("len limit_dist_E: ", len(limit_dist_E[0]))
+        print("size limit_dist_E: ", limit_dist_E[0].size)
         # print("probE[0]: ",probE[0])
         kl_distance_E = F.kl_div(input=probE.log(), target=limit_dist_E, reduction='none')
 
@@ -432,10 +432,10 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
                                                             y_t=noisy_data['y_t'], Qt=Qt, Qsb=Qsb, Qtb=Qtb) # model's predicted posterior distr pθ(z_{t-1}|z_t)
         prob_pred.E = prob_pred.E.reshape((bs, n, n, -1))
 
-        # Reshape and filter masked rows
-        prob_true_E, prob_pred.E = diffusion_utils.mask_distributions(true_E=prob_true.E,
-                                                                      pred_E=prob_pred.E,
-                                                                      node_mask=node_mask)
+        # # Reshape and filter masked rows
+        # prob_true_E, prob_pred.E = diffusion_utils.mask_distributions(true_E=prob_true.E,
+        #                                                               pred_E=prob_pred.E,
+        #                                                               node_mask=node_mask)
         print("prob_true.E[0]: ",prob_true.E[0])
         print("prob_pred.E[0]: ",prob_pred.E[0])
         # prob_true_X, prob_true_E, prob_pred.X, prob_pred.E = diffusion_utils.mask_distributions(true_X=prob_true.X,
@@ -477,11 +477,11 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         proby0 = F.softmax(pred0.y, dim=-1)
         print("reconstruction logp E0: ", probE0[0])
 
-        # Set masked rows to arbitrary values that don't contribute to loss
-        diag_mask = torch.eye(probE0.size(1)).type_as(probE0).bool()
-        diag_mask = diag_mask.unsqueeze(0).expand(probE0.size(0), -1, -1)
-        probE0[diag_mask] = torch.zeros(self.Edim_output).type_as(probE0)
-        print("reconstruction logp masked E0: ", probE0[0])
+        # # Set masked rows to arbitrary values that don't contribute to loss
+        # diag_mask = torch.eye(probE0.size(1)).type_as(probE0).bool()
+        # diag_mask = diag_mask.unsqueeze(0).expand(probE0.size(0), -1, -1)
+        # probE0[diag_mask] = torch.zeros(self.Edim_output).type_as(probE0)
+        # print("reconstruction logp masked E0: ", probE0[0])
 
         return utils.PlaceHolder(X=X0, E=probE0, y=proby0)
         # probX0 = X @ Q0.X  # (bs, n, dx_out)
