@@ -41,17 +41,17 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
         self.train_loss = TrainLossDiscrete(self.cfg.model.lambda_train)
 
-        self.val_nll = NLL()
+        # self.val_nll = NLL()
         # self.val_X_kl = SumExceptBatchKL()
-        self.val_E_kl = SumExceptBatchKL()
+        # self.val_E_kl = SumExceptBatchKL()
         # self.val_X_logp = SumExceptBatchMetric()
-        self.val_E_logp = SumExceptBatchMetric()
+        # self.val_E_logp = SumExceptBatchMetric()
 
-        self.test_nll = NLL()
+        # self.test_nll = NLL()
         # self.test_X_kl = SumExceptBatchKL()
-        self.test_E_kl = SumExceptBatchKL()
+        # self.test_E_kl = SumExceptBatchKL()
         # self.test_X_logp = SumExceptBatchMetric()
-        self.test_E_logp = SumExceptBatchMetric()
+        # self.test_E_logp = SumExceptBatchMetric()
 
         self.train_metrics = train_metrics
         self.sampling_metrics = sampling_metrics
@@ -166,14 +166,14 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
                 all_true_E.append(E.cpu())
 
         # Save as a list — no concatenation
-        os.makedirs("outputs/final_predictions", exist_ok=True)
+        os.makedirs("content/outputs/final_predictions", exist_ok=True)
         torch.save({
             "predicted_E": all_pred_E,  # list of tensors, each (n_i, n_i, num_edge_classes)
             "true_E": all_true_E
-        }, "outputs/final_predictions/train_set_E_predictions.pt")
+        }, "content/outputs/final_predictions/train_set_E_predictions.pt")
 
         self.print(f"Saved {len(all_pred_E)} edge predictions for training set "
-                f"to outputs/final_predictions/train_set_E_predictions.pt")
+                f"to content/outputs/final_predictions/train_set_E_predictions.pt")
 
 
     # Reset metrics and start the epoch timer before def training_step
@@ -202,52 +202,76 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
     # Reset metrics before def validation_step
     def on_validation_epoch_start(self) -> None:
         self.print("Starting validation epoch...")
-        self.val_nll.reset()
+        self.train_loss.reset()
+        # self.val_nll.reset()
         #self.val_X_kl.reset()
-        self.val_E_kl.reset()
+        # self.val_E_kl.reset()
         #self.val_X_logp.reset()
-        self.val_E_logp.reset()
-        self.sampling_metrics.reset()
+        # self.val_E_logp.reset()
+        # self.sampling_metrics.reset()
 
     def validation_step(self, data, i):
         self.print("Validation step")
         dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
         dense_data = dense_data.mask(node_mask)
+        X, E = dense_data.X, dense_data.E
         noisy_data = self.apply_noise(dense_data.X, dense_data.E, data.y, node_mask)
         extra_data = self.compute_extra_data(noisy_data)
         pred = self.forward(noisy_data, extra_data, node_mask)
-        nll = self.compute_val_loss(pred, noisy_data, dense_data.X, dense_data.E, data.y,  node_mask, test=False)
-        return {'loss': nll}
+        
+        # Compute only CE loss (same as training)
+        loss = self.train_loss(masked_pred_X=None, masked_pred_E=pred.E, pred_y=pred.y,
+                            true_X=None, true_E=E, true_y=data.y, log=False)
+        return {'val_loss': loss}
+        # nll = self.compute_val_loss(pred, noisy_data, dense_data.X, dense_data.E, data.y,  node_mask, test=False)
+        # return {'loss': nll}
 
     def on_validation_epoch_end(self) -> None:
-        batch = next(iter(self.trainer.datamodule.val_dataloader()))
-        dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-        dense_data = dense_data.mask(node_mask)
-        X = dense_data.X
-        metrics = [self.val_nll.compute(), self.val_E_kl.compute() * self.T, #self.val_X_kl.compute() * self.T, 
-                   self.val_E_logp.compute()] #self.val_X_logp.compute(),]
+        outputs = self.trainer.callback_metrics
+        avg_val_loss = outputs["val_loss"]
+        
+        self.print(f"Epoch {self.current_epoch}: Validation CE Loss = {avg_val_loss:.4f}")
+
         if wandb.run:
-            wandb.log({"val/epoch_NLL": metrics[0],
-                       #"val/X_kl": metrics[1],
-                       "val/E_kl": metrics[1],
-                       #"val/X_logp": metrics[3],
-                       "val/E_logp": metrics[2]}, commit=False)
+            wandb.log({"val/epoch_CE": avg_val_loss}, commit=False)
 
-        self.print(f"Epoch {self.current_epoch}: Val NLL {metrics[0] :.2f} --",
-                   f"Val Edge type KL: {metrics[1] :.2f}")
-        # self.print(f"Epoch {self.current_epoch}: Val NLL {metrics[0] :.2f} -- Val Atom type KL {metrics[1] :.2f} -- ",
-        #            f"Val Edge type KL: {metrics[2] :.2f}")
+        # Update best validation loss
+        if not hasattr(self, "best_val_loss"):
+            self.best_val_loss = float("inf")
+        if avg_val_loss < self.best_val_loss:
+            self.best_val_loss = avg_val_loss
 
-        # Log val nll with default Lightning logger, so it can be monitored by checkpoint callback
-        val_nll = metrics[0]
-        self.log("val/epoch_NLL", val_nll, sync_dist=True)
-
-        if val_nll < self.best_val_nll:
-            self.best_val_nll = val_nll
-        self.print('Val loss: %.4f \t Best val loss:  %.4f\n' % (val_nll, self.best_val_nll))
+        self.print(f"Best Validation CE Loss so far: {self.best_val_loss:.4f}\n")
 
         self.val_counter += 1
-        return
+        # batch = next(iter(self.trainer.datamodule.val_dataloader()))
+        # dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+        # dense_data = dense_data.mask(node_mask)
+        # X = dense_data.X
+        # metrics = [self.val_nll.compute(), self.val_E_kl.compute() * self.T, #self.val_X_kl.compute() * self.T, 
+        #            self.val_E_logp.compute()] #self.val_X_logp.compute(),]
+        # if wandb.run:
+        #     wandb.log({"val/epoch_NLL": metrics[0],
+        #                #"val/X_kl": metrics[1],
+        #                "val/E_kl": metrics[1],
+        #                #"val/X_logp": metrics[3],
+        #                "val/E_logp": metrics[2]}, commit=False)
+
+        # self.print(f"Epoch {self.current_epoch}: Val NLL {metrics[0] :.2f} --",
+        #            f"Val Edge type KL: {metrics[1] :.2f}")
+        # # self.print(f"Epoch {self.current_epoch}: Val NLL {metrics[0] :.2f} -- Val Atom type KL {metrics[1] :.2f} -- ",
+        # #            f"Val Edge type KL: {metrics[2] :.2f}")
+
+        # # Log val nll with default Lightning logger, so it can be monitored by checkpoint callback
+        # val_nll = metrics[0]
+        # self.log("val/epoch_NLL", val_nll, sync_dist=True)
+
+        # if val_nll < self.best_val_nll:
+        #     self.best_val_nll = val_nll
+        # self.print('Val loss: %.4f \t Best val loss:  %.4f\n' % (val_nll, self.best_val_nll))
+
+        # self.val_counter += 1
+        # return
         # if self.val_counter % self.cfg.general.sample_every_val == 0:
         #     start = time.time()
         #     samples_left_to_generate = self.cfg.general.samples_to_generate
@@ -280,48 +304,61 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
     def on_test_epoch_start(self) -> None:
         self.print("Starting test...")
-        self.test_nll.reset()
-        #self.test_X_kl.reset()
-        self.test_E_kl.reset()
-        #self.test_X_logp.reset()
-        self.test_E_logp.reset()
-        if self.local_rank == 0:
-            utils.setup_wandb(self.cfg)
+        self.train_loss.reset()
+
+        # self.test_nll.reset()
+        # #self.test_X_kl.reset()
+        # self.test_E_kl.reset()
+        # #self.test_X_logp.reset()
+        # self.test_E_logp.reset()
+        # if self.local_rank == 0:
+        #     utils.setup_wandb(self.cfg)
 
     def test_step(self, data, i):
         dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
         dense_data = dense_data.mask(node_mask)
+        X, E = dense_data.X, dense_data.E
         noisy_data = self.apply_noise(dense_data.X, dense_data.E, data.y, node_mask)
         extra_data = self.compute_extra_data(noisy_data)
         pred = self.forward(noisy_data, extra_data, node_mask)
-        nll = self.compute_val_loss(pred, noisy_data, dense_data.X, dense_data.E, data.y, node_mask, test=True)
-        return {'loss': nll}
+        loss = self.train_loss(masked_pred_X=None, masked_pred_E=pred.E, pred_y=pred.y,
+                               true_X=None, true_E=E, true_y=data.y,
+                               log=i % self.log_every_steps == 0)
+        return {'test_loss': loss}
 
     def on_test_epoch_end(self) -> None:
-        batch = next(iter(self.trainer.datamodule.val_dataloader()))
-        dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
-        dense_data = dense_data.mask(node_mask)
-        X = dense_data.X
+        outputs = self.trainer.callback_metrics
+        avg_test_loss = outputs["test_loss"]
+        
+        self.print(f"Epoch {self.current_epoch}: Test CE Loss = {avg_test_loss:.4f}")
 
-        """ Measure likelihood on a test set and compute stability metrics. """
-        metrics = [self.test_nll.compute(), self.test_E_kl.compute(), #self.test_X_kl.compute(),
-                   self.test_E_logp.compute()] #self.test_X_logp.compute(), 
         if wandb.run:
-            wandb.log({"test/epoch_NLL": metrics[0],
-                       #"test/X_kl": metrics[1],
-                       "test/E_kl": metrics[1],
-                       #"test/X_logp": metrics[3],
-                       "test/E_logp": metrics[2]}, commit=False)
+            wandb.log({"test/epoch_CE": avg_test_loss}, commit=False)
+
+        # batch = next(iter(self.trainer.datamodule.val_dataloader()))
+        # dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
+        # dense_data = dense_data.mask(node_mask)
+        # X = dense_data.X
+
+        # """ Measure likelihood on a test set and compute stability metrics. """
+        # metrics = [self.test_nll.compute(), self.test_E_kl.compute(), #self.test_X_kl.compute(),
+        #            self.test_E_logp.compute()] #self.test_X_logp.compute(), 
+        # if wandb.run:
+        #     wandb.log({"test/epoch_NLL": metrics[0],
+        #                #"test/X_kl": metrics[1],
+        #                "test/E_kl": metrics[1],
+        #                #"test/X_logp": metrics[3],
+        #                "test/E_logp": metrics[2]}, commit=False)
             
-        self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Edge type KL: {metrics[1] :.2f}")
-        # self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Atom type KL {metrics[1] :.2f} -- ",
-        #            f"Test Edge type KL: {metrics[2] :.2f}")
+        # self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Edge type KL: {metrics[1] :.2f}")
+        # # self.print(f"Epoch {self.current_epoch}: Test NLL {metrics[0] :.2f} -- Test Atom type KL {metrics[1] :.2f} -- ",
+        # #            f"Test Edge type KL: {metrics[2] :.2f}")
 
-        test_nll = metrics[0]
-        if wandb.run:
-            wandb.log({"test/epoch_NLL": test_nll}, commit=False)
+        # test_nll = metrics[0]
+        # if wandb.run:
+        #     wandb.log({"test/epoch_NLL": test_nll}, commit=False)
 
-        self.print(f'Test loss: {test_nll :.4f}')
+        # self.print(f'Test loss: {test_nll :.4f}')
 
         # samples_left_to_generate = self.cfg.general.final_model_samples_to_generate
         # samples_left_to_save = self.cfg.general.final_model_samples_to_save
@@ -368,154 +405,154 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         # self.print("Done testing.")
 
 
-    def kl_prior(self, X, E, node_mask):
-        """Computes the KL between q(z1 | x) and the prior p(z1) = Normal(0, 1).
+    # def kl_prior(self, X, E, node_mask):
+    #     """Computes the KL between q(z1 | x) and the prior p(z1) = Normal(0, 1).
 
-        This is essentially a lot of work for something that is in practice negligible in the loss. However, you
-        compute it so that you see it when you've made a mistake in your noise schedule.
-        """
-        # Compute the last alpha value, alpha_T.
-        ones = torch.ones((E.size(0), 1), device=E.device)
-        Ts = self.T * ones
-        alpha_t_bar = self.noise_schedule.get_alpha_bar(t_int=Ts)  # (bs, 1)
+    #     This is essentially a lot of work for something that is in practice negligible in the loss. However, you
+    #     compute it so that you see it when you've made a mistake in your noise schedule.
+    #     """
+    #     # Compute the last alpha value, alpha_T.
+    #     ones = torch.ones((E.size(0), 1), device=E.device)
+    #     Ts = self.T * ones
+    #     alpha_t_bar = self.noise_schedule.get_alpha_bar(t_int=Ts)  # (bs, 1)
 
-        Qtb = self.transition_model.get_Qt_bar(alpha_t_bar, self.device)
+    #     Qtb = self.transition_model.get_Qt_bar(alpha_t_bar, self.device)
 
-        # Compute transition probabilities
-        # probX = X @ Qtb.X  # (bs, n, dx_out)
-        probE = E @ Qtb.E.unsqueeze(1)  # (bs, n, n, de_out)
-        # print("E[0]: ", E[0])
-        # print("probE[0]: ",probE[0])
-        # assert probX.shape == X.shape
+    #     # Compute transition probabilities
+    #     # probX = X @ Qtb.X  # (bs, n, dx_out)
+    #     probE = E @ Qtb.E.unsqueeze(1)  # (bs, n, n, de_out)
+    #     # print("E[0]: ", E[0])
+    #     # print("probE[0]: ",probE[0])
+    #     # assert probX.shape == X.shape
 
-        bs, n, _, de = probE.shape
+    #     bs, n, _, de = probE.shape
 
-        #limit_X = self.limit_dist.X[None, None, :].expand(bs, n, -1).type_as(probX)
-        limit_E = self.limit_dist.E[None, None, None, :].expand(bs, n, n, -1).type_as(probE)
+    #     #limit_X = self.limit_dist.X[None, None, :].expand(bs, n, -1).type_as(probX)
+    #     limit_E = self.limit_dist.E[None, None, None, :].expand(bs, n, n, -1).type_as(probE)
 
-        # Make sure that masked rows do not contribute to the loss
-        limit_dist_E, probE = diffusion_utils.mask_distributions(true_E=limit_E.clone(),
-                                                                 pred_E=probE,
-                                                                 node_mask=node_mask)
-        # limit_dist_X, limit_dist_E, probX, probE = diffusion_utils.mask_distributions(true_X=limit_X.clone(),
-        #                                                                               true_E=limit_E.clone(),
-        #                                                                               pred_X=probX,
-        #                                                                               pred_E=probE,
-        #                                                                               node_mask=node_mask)
+    #     # Make sure that masked rows do not contribute to the loss
+    #     limit_dist_E, probE = diffusion_utils.mask_distributions(true_E=limit_E.clone(),
+    #                                                              pred_E=probE,
+    #                                                              node_mask=node_mask)
+    #     # limit_dist_X, limit_dist_E, probX, probE = diffusion_utils.mask_distributions(true_X=limit_X.clone(),
+    #     #                                                                               true_E=limit_E.clone(),
+    #     #                                                                               pred_X=probX,
+    #     #                                                                               pred_E=probE,
+    #     #                                                                               node_mask=node_mask)
 
-        #kl_distance_X = F.kl_div(input=probX.log(), target=limit_dist_X, reduction='none')
-        print("size limit_dist_E: ", limit_dist_E[0].size)
-        # print("probE[0]: ",probE[0])
-        kl_distance_E = F.kl_div(input=probE.log(), target=limit_dist_E, reduction='none')
+    #     #kl_distance_X = F.kl_div(input=probX.log(), target=limit_dist_X, reduction='none')
+    #     print("size limit_dist_E: ", limit_dist_E[0].shape)
+    #     # print("probE[0]: ",probE[0])
+    #     kl_distance_E = F.kl_div(input=probE.log(), target=limit_dist_E, reduction='none')
 
-        return diffusion_utils.sum_except_batch(kl_distance_E) #diffusion_utils.sum_except_batch(kl_distance_X) + \
+    #     return diffusion_utils.sum_except_batch(kl_distance_E) #diffusion_utils.sum_except_batch(kl_distance_X) + \
 
-    def compute_Lt(self, X, E, y, pred, noisy_data, node_mask, test):
-        pred_probs_X = F.softmax(pred.X, dim=-1)
-        pred_probs_E = F.softmax(pred.E, dim=-1)
-        pred_probs_y = F.softmax(pred.y, dim=-1)
+    # def compute_Lt(self, X, E, y, pred, noisy_data, node_mask, test):
+    #     pred_probs_X = F.softmax(pred.X, dim=-1)
+    #     pred_probs_E = F.softmax(pred.E, dim=-1)
+    #     pred_probs_y = F.softmax(pred.y, dim=-1)
 
-        Qtb = self.transition_model.get_Qt_bar(noisy_data['alpha_t_bar'], self.device) # Q_t_bar
-        Qsb = self.transition_model.get_Qt_bar(noisy_data['alpha_s_bar'], self.device) # Q_t-1_bar
-        Qt = self.transition_model.get_Qt(noisy_data['beta_t'], self.device)           # Q_t
+    #     Qtb = self.transition_model.get_Qt_bar(noisy_data['alpha_t_bar'], self.device) # Q_t_bar
+    #     Qsb = self.transition_model.get_Qt_bar(noisy_data['alpha_s_bar'], self.device) # Q_t-1_bar
+    #     Qt = self.transition_model.get_Qt(noisy_data['beta_t'], self.device)           # Q_t
 
-        # Compute distributions to compare with KL
-        bs, n, _, de = E.shape
-        # print('bs in compute_Lt: ', bs)
-        # print('n in computeLt: ', n)
-        # print('de in compute Lt: ', de)
-        prob_true = diffusion_utils.posterior_distributions(X=X, E=E, y=y, X_t=noisy_data['X_t'], E_t=noisy_data['E_t'],
-                                                            y_t=noisy_data['y_t'], Qt=Qt, Qsb=Qsb, Qtb=Qtb) # true posterior distr: q(z_{t-1}|z_t, z_0)
-        prob_true.E = prob_true.E.reshape((bs, n, n, -1))
-        prob_pred = diffusion_utils.posterior_distributions(X=pred_probs_X, E=pred_probs_E, y=pred_probs_y,
-                                                            X_t=noisy_data['X_t'], E_t=noisy_data['E_t'],
-                                                            y_t=noisy_data['y_t'], Qt=Qt, Qsb=Qsb, Qtb=Qtb) # model's predicted posterior distr pθ(z_{t-1}|z_t)
-        prob_pred.E = prob_pred.E.reshape((bs, n, n, -1))
+    #     # Compute distributions to compare with KL
+    #     bs, n, _, de = E.shape
+    #     # print('bs in compute_Lt: ', bs)
+    #     # print('n in computeLt: ', n)
+    #     # print('de in compute Lt: ', de)
+    #     prob_true = diffusion_utils.posterior_distributions(X=X, E=E, y=y, X_t=noisy_data['X_t'], E_t=noisy_data['E_t'],
+    #                                                         y_t=noisy_data['y_t'], Qt=Qt, Qsb=Qsb, Qtb=Qtb) # true posterior distr: q(z_{t-1}|z_t, z_0)
+    #     prob_true.E = prob_true.E.reshape((bs, n, n, -1))
+    #     prob_pred = diffusion_utils.posterior_distributions(X=pred_probs_X, E=pred_probs_E, y=pred_probs_y,
+    #                                                         X_t=noisy_data['X_t'], E_t=noisy_data['E_t'],
+    #                                                         y_t=noisy_data['y_t'], Qt=Qt, Qsb=Qsb, Qtb=Qtb) # model's predicted posterior distr pθ(z_{t-1}|z_t)
+    #     prob_pred.E = prob_pred.E.reshape((bs, n, n, -1))
 
-        # # Reshape and filter masked rows
-        # prob_true_E, prob_pred.E = diffusion_utils.mask_distributions(true_E=prob_true.E,
-        #                                                               pred_E=prob_pred.E,
-        #                                                               node_mask=node_mask)
-        print("prob_true.E[0]: ",prob_true.E[0])
-        print("prob_pred.E[0]: ",prob_pred.E[0])
-        # prob_true_X, prob_true_E, prob_pred.X, prob_pred.E = diffusion_utils.mask_distributions(true_X=prob_true.X,
-        #                                                                                         true_E=prob_true.E,
-        #                                                                                         pred_X=prob_pred.X,
-        #                                                                                         pred_E=prob_pred.E,
-        #                                                                                         node_mask=node_mask)
-        # kl_x = (self.test_X_kl if test else self.val_X_kl)(prob_true.X, torch.log(prob_pred.X))
-        kl_e = (self.test_E_kl if test else self.val_E_kl)(prob_true.E, torch.log(prob_pred.E))
-        return self.T * kl_e
-        #return self.T * (kl_x + kl_e)
+    #     # # Reshape and filter masked rows
+    #     # prob_true_E, prob_pred.E = diffusion_utils.mask_distributions(true_E=prob_true.E,
+    #     #                                                               pred_E=prob_pred.E,
+    #     #                                                               node_mask=node_mask)
+    #     print("prob_true.E[0]: ",prob_true.E[0])
+    #     print("prob_pred.E[0]: ",prob_pred.E[0])
+    #     # prob_true_X, prob_true_E, prob_pred.X, prob_pred.E = diffusion_utils.mask_distributions(true_X=prob_true.X,
+    #     #                                                                                         true_E=prob_true.E,
+    #     #                                                                                         pred_X=prob_pred.X,
+    #     #                                                                                         pred_E=prob_pred.E,
+    #     #                                                                                         node_mask=node_mask)
+    #     # kl_x = (self.test_X_kl if test else self.val_X_kl)(prob_true.X, torch.log(prob_pred.X))
+    #     kl_e = (self.test_E_kl if test else self.val_E_kl)(prob_true.E, torch.log(prob_pred.E))
+    #     return self.T * kl_e
+    #     #return self.T * (kl_x + kl_e)
 
-    def reconstruction_logp(self, t, X, E, node_mask):
-        # Compute noise values for t = 0.
-        t_zeros = torch.zeros_like(t)
-        beta_0 = self.noise_schedule(t_zeros)
-        Q0 = self.transition_model.get_Qt(beta_t=beta_0, device=self.device)
+    # def reconstruction_logp(self, t, X, E, node_mask):
+    #     # Compute noise values for t = 0.
+    #     t_zeros = torch.zeros_like(t)
+    #     beta_0 = self.noise_schedule(t_zeros)
+    #     Q0 = self.transition_model.get_Qt(beta_t=beta_0, device=self.device)
         
-        probE0 = E @ Q0.E.unsqueeze(1)
-        sampled0 = diffusion_utils.sample_discrete_features(probX=None, probE=probE0, node_mask=node_mask)
+    #     probE0 = E @ Q0.E.unsqueeze(1)
+    #     sampled0 = diffusion_utils.sample_discrete_features(probX=None, probE=probE0, node_mask=node_mask)
 
-        X0 = X  # unchanged
-        E0 = F.one_hot(sampled0.E, num_classes=self.Edim_output).float()
-        y0 = sampled0.y
-        assert (X.shape == X0.shape) and (E.shape == E0.shape)
+    #     X0 = X  # unchanged
+    #     E0 = F.one_hot(sampled0.E, num_classes=self.Edim_output).float()
+    #     y0 = sampled0.y
+    #     assert (X.shape == X0.shape) and (E.shape == E0.shape)
         
-        sampled_0 = utils.PlaceHolder(X=X0, E=E0, y=y0).mask(node_mask)
+    #     sampled_0 = utils.PlaceHolder(X=X0, E=E0, y=y0).mask(node_mask)
 
-        # Predictions
-        noisy_data = {'X_t': X, 'E_t': sampled_0.E, 'y_t': sampled_0.y, 'node_mask': node_mask,
-                      't': torch.zeros(X0.shape[0], 1).type_as(y0)}
-        # noisy_data = {'X_t': sampled_0.X, 'E_t': sampled_0.E, 'y_t': sampled_0.y, 'node_mask': node_mask,
-        #               't': torch.zeros(X0.shape[0], 1).type_as(y0)}
-        extra_data = self.compute_extra_data(noisy_data)
-        pred0 = self.forward(noisy_data, extra_data, node_mask)
+    #     # Predictions
+    #     noisy_data = {'X_t': X, 'E_t': sampled_0.E, 'y_t': sampled_0.y, 'node_mask': node_mask,
+    #                   't': torch.zeros(X0.shape[0], 1).type_as(y0)}
+    #     # noisy_data = {'X_t': sampled_0.X, 'E_t': sampled_0.E, 'y_t': sampled_0.y, 'node_mask': node_mask,
+    #     #               't': torch.zeros(X0.shape[0], 1).type_as(y0)}
+    #     extra_data = self.compute_extra_data(noisy_data)
+    #     pred0 = self.forward(noisy_data, extra_data, node_mask)
 
-        # Normalize predictions
-        probE0 = F.softmax(pred0.E, dim=-1)
-        proby0 = F.softmax(pred0.y, dim=-1)
-        print("reconstruction logp E0: ", probE0[0])
+    #     # Normalize predictions
+    #     probE0 = F.softmax(pred0.E, dim=-1)
+    #     proby0 = F.softmax(pred0.y, dim=-1)
+    #     print("reconstruction logp E0: ", probE0[0])
 
-        # # Set masked rows to arbitrary values that don't contribute to loss
-        # diag_mask = torch.eye(probE0.size(1)).type_as(probE0).bool()
-        # diag_mask = diag_mask.unsqueeze(0).expand(probE0.size(0), -1, -1)
-        # probE0[diag_mask] = torch.zeros(self.Edim_output).type_as(probE0)
-        # print("reconstruction logp masked E0: ", probE0[0])
+    #     # # Set masked rows to arbitrary values that don't contribute to loss
+    #     # diag_mask = torch.eye(probE0.size(1)).type_as(probE0).bool()
+    #     # diag_mask = diag_mask.unsqueeze(0).expand(probE0.size(0), -1, -1)
+    #     # probE0[diag_mask] = torch.zeros(self.Edim_output).type_as(probE0)
+    #     # print("reconstruction logp masked E0: ", probE0[0])
 
-        return utils.PlaceHolder(X=X0, E=probE0, y=proby0)
-        # probX0 = X @ Q0.X  # (bs, n, dx_out)
-        # probE0 = E @ Q0.E.unsqueeze(1)  # (bs, n, n, de_out)
+    #     return utils.PlaceHolder(X=X0, E=probE0, y=proby0)
+    #     # probX0 = X @ Q0.X  # (bs, n, dx_out)
+    #     # probE0 = E @ Q0.E.unsqueeze(1)  # (bs, n, n, de_out)
 
-        # sampled0 = diffusion_utils.sample_discrete_features(probX=probX0, probE=probE0, node_mask=node_mask)
+    #     # sampled0 = diffusion_utils.sample_discrete_features(probX=probX0, probE=probE0, node_mask=node_mask)
 
-        # X0 = F.one_hot(sampled0.X, num_classes=self.Xdim_output).float()
-        # E0 = F.one_hot(sampled0.E, num_classes=self.Edim_output).float()
-        # y0 = sampled0.y
-        # assert (X.shape == X0.shape) and (E.shape == E0.shape)
+    #     # X0 = F.one_hot(sampled0.X, num_classes=self.Xdim_output).float()
+    #     # E0 = F.one_hot(sampled0.E, num_classes=self.Edim_output).float()
+    #     # y0 = sampled0.y
+    #     # assert (X.shape == X0.shape) and (E.shape == E0.shape)
 
-        # sampled_0 = utils.PlaceHolder(X=X0, E=E0, y=y0).mask(node_mask)
+    #     # sampled_0 = utils.PlaceHolder(X=X0, E=E0, y=y0).mask(node_mask)
 
-        # # Predictions
-        # noisy_data = {'X_t': sampled_0.X, 'E_t': sampled_0.E, 'y_t': sampled_0.y, 'node_mask': node_mask,
-        #               't': torch.zeros(X0.shape[0], 1).type_as(y0)}
-        # extra_data = self.compute_extra_data(noisy_data)
-        # pred0 = self.forward(noisy_data, extra_data, node_mask)
+    #     # # Predictions
+    #     # noisy_data = {'X_t': sampled_0.X, 'E_t': sampled_0.E, 'y_t': sampled_0.y, 'node_mask': node_mask,
+    #     #               't': torch.zeros(X0.shape[0], 1).type_as(y0)}
+    #     # extra_data = self.compute_extra_data(noisy_data)
+    #     # pred0 = self.forward(noisy_data, extra_data, node_mask)
 
-        # # Normalize predictions
-        # probX0 = F.softmax(pred0.X, dim=-1)
-        # probE0 = F.softmax(pred0.E, dim=-1)
-        # proby0 = F.softmax(pred0.y, dim=-1)
+    #     # # Normalize predictions
+    #     # probX0 = F.softmax(pred0.X, dim=-1)
+    #     # probE0 = F.softmax(pred0.E, dim=-1)
+    #     # proby0 = F.softmax(pred0.y, dim=-1)
 
-        # # Set masked rows to arbitrary values that don't contribute to loss
-        # probX0[~node_mask] = torch.ones(self.Xdim_output).type_as(probX0)
-        # probE0[~(node_mask.unsqueeze(1) * node_mask.unsqueeze(2))] = torch.ones(self.Edim_output).type_as(probE0)
+    #     # # Set masked rows to arbitrary values that don't contribute to loss
+    #     # probX0[~node_mask] = torch.ones(self.Xdim_output).type_as(probX0)
+    #     # probE0[~(node_mask.unsqueeze(1) * node_mask.unsqueeze(2))] = torch.ones(self.Edim_output).type_as(probE0)
 
-        # diag_mask = torch.eye(probE0.size(1)).type_as(probE0).bool()
-        # diag_mask = diag_mask.unsqueeze(0).expand(probE0.size(0), -1, -1)
-        # probE0[diag_mask] = torch.ones(self.Edim_output).type_as(probE0)
+    #     # diag_mask = torch.eye(probE0.size(1)).type_as(probE0).bool()
+    #     # diag_mask = diag_mask.unsqueeze(0).expand(probE0.size(0), -1, -1)
+    #     # probE0[diag_mask] = torch.ones(self.Edim_output).type_as(probE0)
 
-        # return utils.PlaceHolder(X=probX0, E=probE0, y=proby0)
+    #     # return utils.PlaceHolder(X=probX0, E=probE0, y=proby0)
 
     def apply_noise(self, X, E, y, node_mask):
         """ Sample noise and apply it to the data. """
@@ -555,56 +592,56 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
                       'alpha_t_bar': alpha_t_bar, 'X_t': z_t.X, 'E_t': z_t.E, 'y_t': z_t.y, 'node_mask': node_mask}
         return noisy_data
 
-    def compute_val_loss(self, pred, noisy_data, X, E, y, node_mask, test=False):
-        """Computes an estimator for the variational lower bound.
-           pred: (batch_size, n, total_features)
-           noisy_data: dict
-           X, E, y : (bs, n, dx),  (bs, n, n, de), (bs, dy)
-           node_mask : (bs, n)
-           Output: nll (size 1)
-       """
-        t = noisy_data['t']
+    # def compute_val_loss(self, pred, noisy_data, X, E, y, node_mask, test=False):
+    #     """Computes an estimator for the variational lower bound.
+    #        pred: (batch_size, n, total_features)
+    #        noisy_data: dict
+    #        X, E, y : (bs, n, dx),  (bs, n, n, de), (bs, dy)
+    #        node_mask : (bs, n)
+    #        Output: nll (size 1)
+    #    """
+    #     t = noisy_data['t']
 
-        # 1.
-        #N = node_mask.sum(1).long()
-        log_pN = 0.0 #self.node_dist.log_prob(N) # penalize the model if it generates graphs with unlikely node counts
+    #     # 1.
+    #     #N = node_mask.sum(1).long()
+    #     log_pN = 0.0 #self.node_dist.log_prob(N) # penalize the model if it generates graphs with unlikely node counts
 
-        # 2. The KL between q(z_T | x) and p(z_T) = Marginal(E). Should be close to zero.
-        kl_prior = self.kl_prior(X, E, node_mask) # measure how the noised distribution at T q(z_T/x) is close to target distribution p(z_T) 
-        # print('kl_prior per graph: ',kl_prior)
+    #     # 2. The KL between q(z_T | x) and p(z_T) = Marginal(E). Should be close to zero.
+    #     kl_prior = self.kl_prior(X, E, node_mask) # measure how the noised distribution at T q(z_T/x) is close to target distribution p(z_T) 
+    #     # print('kl_prior per graph: ',kl_prior)
 
-        # 3. Diffusion loss
-        loss_all_t = self.compute_Lt(X, E, y, pred, noisy_data, node_mask, test)
-        print('loss_all_t: ',loss_all_t)
+    #     # 3. Diffusion loss
+    #     loss_all_t = self.compute_Lt(X, E, y, pred, noisy_data, node_mask, test)
+    #     print('loss_all_t: ',loss_all_t)
 
-        # 4. Reconstruction loss
-        # Compute L0 term : -log p (X, E, y | z_0) = reconstruction loss
-        prob0 = self.reconstruction_logp(t, X, E, node_mask)
+    #     # 4. Reconstruction loss
+    #     # Compute L0 term : -log p (X, E, y | z_0) = reconstruction loss
+    #     prob0 = self.reconstruction_logp(t, X, E, node_mask)
 
-        loss_term_0 = self.val_E_logp(E * prob0.E.log()) #+ self.val_X_logp(X * prob0.X.log())
-        print("loss_term_0: ",loss_term_0)
+    #     loss_term_0 = self.val_E_logp(E * prob0.E.log()) #+ self.val_X_logp(X * prob0.X.log())
+    #     print("loss_term_0: ",loss_term_0)
 
-        # Combine terms
-        print("Computing nll...")
-        nlls = - log_pN + kl_prior + loss_all_t - loss_term_0
-        assert len(nlls.shape) == 1, f'{nlls.shape} has more than only batch dim.'
+    #     # Combine terms
+    #     print("Computing nll...")
+    #     nlls = - log_pN + kl_prior + loss_all_t - loss_term_0
+    #     assert len(nlls.shape) == 1, f'{nlls.shape} has more than only batch dim.'
 
-        # Update NLL metric object and return batch nll
-        nll = (self.test_nll if test else self.val_nll)(nlls)        # Average over the batch
+    #     # Update NLL metric object and return batch nll
+    #     nll = (self.test_nll if test else self.val_nll)(nlls)        # Average over the batch
 
-        if wandb.run:
-            wandb.log({"kl prior": kl_prior.mean(),
-                       "Estimator loss terms": loss_all_t.mean(),
-                       #"log_pn": log_pN.mean(),
-                       "loss_term_0": loss_term_0,
-                       'batch_test_nll' if test else 'val_nll': nll}, commit=False)
-        return nll
+    #     if wandb.run:
+    #         wandb.log({"kl prior": kl_prior.mean(),
+    #                    "Estimator loss terms": loss_all_t.mean(),
+    #                    #"log_pn": log_pN.mean(),
+    #                    "loss_term_0": loss_term_0,
+    #                    'batch_test_nll' if test else 'val_nll': nll}, commit=False)
+    #     return nll
 
-    def forward(self, noisy_data, extra_data, node_mask):
-        X = torch.cat((noisy_data['X_t'], extra_data.X), dim=2).float()
-        E = torch.cat((noisy_data['E_t'], extra_data.E), dim=3).float()
-        y = torch.hstack((noisy_data['y_t'], extra_data.y)).float()
-        return self.model(X, E, y, node_mask)
+    # def forward(self, noisy_data, extra_data, node_mask):
+    #     X = torch.cat((noisy_data['X_t'], extra_data.X), dim=2).float()
+    #     E = torch.cat((noisy_data['E_t'], extra_data.E), dim=3).float()
+    #     y = torch.hstack((noisy_data['y_t'], extra_data.y)).float()
+    #     return self.model(X, E, y, node_mask)
 
     @torch.no_grad()
     # def sample_batch(self, batch_id: int, batch_size: int, keep_chain: int, number_chain_steps: int,
