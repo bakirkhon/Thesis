@@ -107,6 +107,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
         dense_data = dense_data.mask(node_mask)
         X, E = dense_data.X, dense_data.E
+        print("training_E: ", E[0][0])
         noisy_data = self.apply_noise(X, E, data.y, node_mask)
         extra_data = self.compute_extra_data(noisy_data)
         pred = self.forward(noisy_data, extra_data, node_mask)
