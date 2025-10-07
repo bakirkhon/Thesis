@@ -234,9 +234,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         #               f" y_CE: {to_log['train_epoch/y_CE'] :.3f}"
         #               f" -- {time.time() - self.start_epoch_time:.1f}s ")
         avg_val_loss = to_log_val['val_epoch/E_CE']
-        
-        if wandb.run:
-            wandb.log({"val/epoch_E_CE": avg_val_loss}, commit=False)
+        self.log("val_epoch/E_CE", avg_val_loss)
 
         # Update best validation loss
         if avg_val_loss < self.best_val_loss:
@@ -333,12 +331,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         #               f" -- E_CE: {to_log['train_epoch/E_CE'] :.3f} --"
         #               f" y_CE: {to_log['train_epoch/y_CE'] :.3f}"
         #               f" -- {time.time() - self.start_epoch_time:.1f}s ")
-        avg_test_loss = to_log_test['test_epoch/E_CE']
-        
-        if wandb.run:
-            wandb.log({"test/epoch_E_CE": avg_test_loss}, commit=False)
-
-    
+           
         # batch = next(iter(self.trainer.datamodule.val_dataloader()))
         # dense_data, node_mask = utils.to_dense(batch.x, batch.edge_index, batch.edge_attr, batch.batch)
         # dense_data = dense_data.mask(node_mask)
