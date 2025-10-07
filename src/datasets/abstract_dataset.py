@@ -64,9 +64,11 @@ class AbstractDataModule(LightningDataset):
             num_non_edges = all_pairs - num_edges
 
             edge_types = data.edge_attr.sum(dim=0)
-            assert num_non_edges >= 0
-            d[0] += num_non_edges
-            d[1:] += edge_types[1:]
+            print(edge_types)
+            #assert num_non_edges >= 0
+            #d[0] += num_non_edges
+            d[:] += edge_types[:]
+            #d[1:] += edge_types[1:]
 
         d = d / d.sum()
         return d
