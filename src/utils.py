@@ -63,13 +63,13 @@ def to_dense(x, edge_index, edge_attr, batch):
 
 
 def encode_no_edge(E):
-    assert len(E.shape) == 4
-    if E.shape[-1] == 0:
-        return E
-    no_edge = torch.sum(E, dim=3) == 0
-    first_elt = E[:, :, :, 0]
-    first_elt[no_edge] = 1
-    E[:, :, :, 0] = first_elt
+    # assert len(E.shape) == 4
+    # if E.shape[-1] == 0:
+    #     return E
+    # no_edge = torch.sum(E, dim=3) == 0
+    # first_elt = E[:, :, :, 0]
+    # first_elt[no_edge] = 1
+    # E[:, :, :, 0] = first_elt
     diag = torch.eye(E.shape[1], dtype=torch.bool).unsqueeze(0).expand(E.shape[0], -1, -1)
     E[diag] = 0
     return E

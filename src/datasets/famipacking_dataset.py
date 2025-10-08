@@ -78,6 +78,7 @@ class FamipackingGraphDataset(InMemoryDataset):
         for graph in raw_dataset:
             X=graph['X']
             E=graph['E']
+            print("check: ",E[0][0])
             n=X.shape[0]
             y=torch.zeros([1, 0]).float() # empty placeholder label for each graph
             # first row=source nodes, second row=destination rows

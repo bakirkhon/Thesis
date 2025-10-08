@@ -213,7 +213,7 @@ while valid_count<num_samples and attempts<max_attempts:
 
     # Fill E
     E = np.zeros((n, n, 4))
-    E[:, :, 0] = 0   # assume initially all pairs have no edge
+    E[:, :, 0] = 1   # assume initially all pairs have no edge
     
 
     for bin_category, bin_indices in bin_size_map.items():
