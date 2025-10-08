@@ -212,26 +212,51 @@ while valid_count<num_samples and attempts<max_attempts:
     bin_size_to_vb_index={tuple(dim):i for i, dim in enumerate(Vb)}
 
     # Fill E
+    E = np.zeros((n, n, 4))
+    E[:, :, 0] = 0   # assume initially all pairs have no edge
+    
+
     for bin_category, bin_indices in bin_size_map.items():
         for local_idx, bin_global_index in enumerate(bin_indices):
-            b=bins[bin_global_index]
-            bin_dims=(int(b.width),int(b.height),int(b.depth))
-            vb_index=bin_size_to_vb_index[bin_dims]
-            bin_index=num_items+vb_index
+            b = bins[bin_global_index]
+            bin_dims = (int(b.width), int(b.height), int(b.depth))
+            vb_index = bin_size_to_vb_index[bin_dims]
+            bin_index = num_items + vb_index
 
             for item in b.items:
-                item_index=int(item.partno.split('-')[1])
-                E[item_index][bin_index][local_idx]=1
-                E[bin_index][item_index][local_idx]=1
+                item_index = int(item.partno.split('-')[1])
+
+                # Clear "no edge" indicator
+                E[item_index, bin_index, 0] = 0
+                E[bin_index, item_index, 0] = 0
+
+                # Set one-hot for this specific edge type (+1 offset since 0 is no-edge)
+                edge_type_channel = local_idx + 1
+                E[item_index, bin_index, edge_type_channel] = 1
+                E[bin_index, item_index, edge_type_channel] = 1
+ 
+    # for bin_category, bin_indices in bin_size_map.items():
+    #     for local_idx, bin_global_index in enumerate(bin_indices):
+    #         b=bins[bin_global_index]
+    #         bin_dims=(int(b.width),int(b.height),int(b.depth))
+    #         vb_index=bin_size_to_vb_index[bin_dims]
+    #         bin_index=num_items+vb_index
+
+    #         for item in b.items:
+    #             item_index=int(item.partno.split('-')[1])
+    #             E[item_index][bin_index][local_idx]=1
+    #             E[bin_index][item_index][local_idx]=1
 
     # Save sample
     dataset.append({
-        'X': torch.tensor(V, dtype=torch.float32),
-        'E': E  # list of lists is fine
+        'X': V,
+        'E': E,
+        'nb': len(Vb)
     })
     np_dataset.append({
         'X': V,
-        'E': E
+        'E': E,
+        'nb': len(Vb)
     })
 
     valid_count+=1

@@ -11,7 +11,7 @@ from datasets.abstract_dataset import AbstractDataModule, AbstractDatasetInfos
 # downloads, processes & saves the dataset
 class FamipackingGraphDataset(InMemoryDataset):
     def __init__(self, dataset_name, split, root, transform=None, pre_transform=None,pre_filter=None):
-        self.famipacking_file='famipacking_2048.pt'
+        self.famipacking_file='famipacking.pt' 
         self.dataset_name=dataset_name
         self.split=split
         self.num_graphs=100
@@ -81,8 +81,8 @@ class FamipackingGraphDataset(InMemoryDataset):
             n=X.shape[0]
             y=torch.zeros([1, 0]).float() # empty placeholder label for each graph
             # first row=source nodes, second row=destination rows
-            edge_index, _=torch_geometric.utils.dense_to_sparse((E.sum(-1)>=0).float())
-            #print(edge_index)
+            edge_index, _=torch_geometric.utils.dense_to_sparse((E.sum(-1)>0).float())
+            print(edge_index)
             edge_attr=E[edge_index[0],edge_index[1],:]
             print(edge_attr)
             num_nodes=n*torch.ones(1,dtype=torch.long)
@@ -99,7 +99,7 @@ class FamipackingGraphDataset(InMemoryDataset):
 
 # creates DataModule object that wraps three datasets
 class FamipackingGraphDataModule(AbstractDataModule):
-    def __init__(self, cfg, n_graphs=2048):
+    def __init__(self, cfg, n_graphs=100):
         self.cfg=cfg
         self.datadir=cfg.dataset.datadir
 
@@ -115,10 +115,10 @@ class FamipackingGraphDataModule(AbstractDataModule):
                                                      split='test', root=root_path)}
                 
         print("train first graph's nodes: ", datasets['train'][0].x)
-        print("train first edge (source, target): ", datasets['train'][0].edge_index[:, 0])
+        print("train first edge pair (source, target): ", datasets['train'][0].edge_index[:, 0])
         print("train first edge feature: ", datasets['train'][0].edge_attr[0])
         print("train target (graph-level) y: ", datasets['train'][0].y)            
-        print("train number of nodes: ", datasets['train'][0].n_nodes)                   
+        print("train first number of nodes: ", datasets['train'][0].n_nodes)                   
 
         super().__init__(cfg, datasets)
         self.inner=self.train_dataset

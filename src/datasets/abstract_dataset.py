@@ -19,6 +19,7 @@ class AbstractDataModule(LightningDataset):
     def __getitem__(self, idx):
         return self.train_dataset[idx]
 
+    # distribution of node counts
     def node_counts(self, max_nodes_possible=300):
         all_counts = torch.zeros(max_nodes_possible)
         for loader in [self.train_dataloader(), self.val_dataloader()]:
@@ -31,6 +32,7 @@ class AbstractDataModule(LightningDataset):
         all_counts = all_counts / all_counts.sum()
         return all_counts
 
+    # not used
     def node_types(self):
         num_classes = None
         for data in self.train_dataloader():
@@ -45,6 +47,7 @@ class AbstractDataModule(LightningDataset):
         counts = counts / counts.sum()
         return counts
 
+    #distribution of edge counts
     def edge_counts(self):
         num_classes = None
         for data in self.train_dataloader():
