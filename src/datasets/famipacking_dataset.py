@@ -56,6 +56,7 @@ class FamipackingGraphDataset(InMemoryDataset):
         for i, graph in enumerate(all_graphs):
             graph['X'] = torch.tensor(graph['X'], dtype=torch.float)
             graph['E'] = torch.tensor(graph['E'], dtype=torch.float)
+            graph['na'] = torch.tensor(graph['na'], dtype=torch.int)
             if i in train_indices:
                 train_data.append(graph)
             elif i in val_indices:
@@ -79,7 +80,7 @@ class FamipackingGraphDataset(InMemoryDataset):
             X=graph['X']
             E=graph['E']
             n=X.shape[0]
-            nb=graph['nb']
+            na=graph['na']
             y=torch.zeros([1, 0]).float() # empty placeholder label for each graph
             # first row=source nodes, second row=destination 
             edge_index, _=torch_geometric.utils.dense_to_sparse((E.sum(-1)>0).float())
@@ -87,7 +88,7 @@ class FamipackingGraphDataset(InMemoryDataset):
             edge_attr=E[edge_index[0],edge_index[1],:]
             # print(edge_attr)
             num_nodes=n*torch.ones(1,dtype=torch.long)
-            data=torch_geometric.data.Data(x=X, edge_index=edge_index, edge_attr=edge_attr, y=y, n_nodes=num_nodes)
+            data=torch_geometric.data.Data(x=X, edge_index=edge_index, edge_attr=edge_attr, y=y, n_nodes=num_nodes, na=na)
             
             if self.pre_filter is not None and not self.pre_filter(data):
                 continue

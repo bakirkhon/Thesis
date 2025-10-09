@@ -251,12 +251,12 @@ while valid_count<num_samples and attempts<max_attempts:
     dataset.append({
         'X': V,
         'E': E,
-        'nb': len(Vb)
+        'na': len(Va)
     })
     np_dataset.append({
         'X': V,
         'E': E,
-        'nb': len(Vb)
+        'na': len(Va)
     })
 
     valid_count+=1

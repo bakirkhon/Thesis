@@ -104,10 +104,10 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         if data.edge_index.numel() == 0:
             self.print("Found a batch with no edges. Skipping.")
             return
-        dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
-        node_mask_test=node_mask.clone()
-        node_mask_test[:data.nb,:data.nb] = False
-        print("test: ", node_mask_test)
+        dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch, data.na)
+        # node_mask_test=node_mask.clone()
+        # node_mask_test[:data.na,:data.na] = False
+        # print("test: ", node_mask_test[0])
         dense_data = dense_data.mask(node_mask)
         X, E = dense_data.X, dense_data.E
         print("training_E: ", E[0])
