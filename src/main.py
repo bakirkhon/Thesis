@@ -63,10 +63,40 @@ def get_resume_adaptive(cfg, model_kwargs):
     new_cfg = utils.update_config_with_new_keys(new_cfg, saved_cfg)
     return new_cfg, model
 
+def get_resume_inference(cfg, model_kwargs):
+    """
+    Loads a model for inference using the checkpoint path in cfg.general.inference_only.
+    Unlike test_only, this does not run Trainer.test() — it lets us call predict_edges().
+    """
+    saved_cfg = cfg.copy()
+    ckpt_path = cfg.general.inference
+    name = cfg.general.name + '_inference'
+
+    # Load model from checkpoint
+    if cfg.model.type == 'discrete':
+        model = DiscreteDenoisingDiffusion.load_from_checkpoint(
+            ckpt_path,
+            strict=False,
+            map_location="cpu",
+            **model_kwargs
+        )
+        model = model.to("cuda" if torch.cuda.is_available() else "cpu")
+
+    cfg = model.cfg  # Restore training configuration from checkpoint
+    cfg.general.inference = ckpt_path
+    cfg.general.name = name
+
+    cfg = utils.update_config_with_new_keys(cfg, saved_cfg)
+    return cfg, model
 
 
 @hydra.main(version_base='1.3', config_path='../configs', config_name='config')
 def main(cfg: DictConfig):
+    # print("Select mode:")
+    # print("1 - Training")
+    # print("2 - Inference (predict edges)")
+    # mode = input("Enter 1 or 2: ").strip()
+
     dataset_config = cfg["dataset"] # load dataset name from config file
 
     if dataset_config["name"] in ['sbm', 'comm20', 'planar', 'famipacking']:
@@ -170,6 +200,37 @@ def main(cfg: DictConfig):
         # When resuming, we can override some parts of previous configuration
         cfg, _ = get_resume_adaptive(cfg, model_kwargs)
         os.chdir(cfg.general.resume.split('checkpoints')[0])
+    elif cfg.general.inference:
+        # Load checkpoint for inference
+        cfg, model = get_resume_inference(cfg, model_kwargs)
+        os.chdir(cfg.general.inference_only.split('checkpoints')[0])
+        print("Running inference mode (predict_edges)...")
+        X_fixed = torch.tensor([[26, 27, 18],
+                            [24, 23,  7],
+                            [19, 25, 18],
+                            [20, 21, 12],
+                            [28, 29, 15],
+                            [20, 29, 18],
+                            [22, 23, 14],
+                            [17, 21, 19],
+                            [21, 24, 14],
+                            [17, 27, 19],
+                            [21, 20, 17],
+                            [20, 20, 15],
+                            [15, 22, 11],
+                            [15, 24,  5],
+                            [40, 40, 30],
+                            [30, 30, 30]])
+
+        if X_fixed.ndim == 2:
+            X_fixed = X_fixed.unsqueeze(0)
+
+        model.eval()
+        model.to("cuda" if torch.cuda.is_available() else "cpu")
+        model.predict_edges(X_fixed)
+        return  # Exit after inference    
+
+
 
     utils.create_folders(cfg)
 
@@ -211,10 +272,38 @@ def main(cfg: DictConfig):
                       log_every_n_steps=50 if name != 'debug' else 1,
                       logger = [])
 
-    if not cfg.general.test_only:
+    if not cfg.general.test_only: # and mode == "1":
         trainer.fit(model, datamodule=datamodule, ckpt_path=cfg.general.resume)
         if cfg.general.name not in ['debug', 'test']:
             trainer.test(model, datamodule=datamodule)
+    # elif mode == "2":
+    #     print("Running inference (predict_edges)...")
+    #     ckpt_path = "/home/bakirkhon/Thesis/outputs/2025-10-08/06-41-27-graph-tf-model/checkpoints/graph-tf-model/epoch=299.ckpt"
+    #     from lightning_fabric.utilities.cloud_io import _load as pl_load
+    #     checkpoint = pl_load(ckpt_path, map_location="cpu")
+
+    #     model = DiscreteDenoisingDiffusion(cfg=cfg, **model_kwargs)
+    #     model.load_state_dict(checkpoint["state_dict"], strict=False)
+    #     model.eval()
+    #     model.to("cuda" if torch.cuda.is_available() else "cpu")
+
+    #     X_fixed = torch.tensor([[26, 27, 18],
+    #                             [24, 23,  7],
+    #                             [19, 25, 18],
+    #                             [20, 21, 12],
+    #                             [28, 29, 15],
+    #                             [20, 29, 18],
+    #                             [22, 23, 14],
+    #                             [17, 21, 19],
+    #                             [21, 24, 14],
+    #                             [17, 27, 19],
+    #                             [21, 20, 17],
+    #                             [20, 20, 15],
+    #                             [15, 22, 11],
+    #                             [15, 24,  5],
+    #                             [40, 40, 30],
+    #                             [30, 30, 30]])
+    #     model.predict_edges(X_fixed)
     else:
         # Start by evaluating test_only_path
         trainer.test(model, datamodule=datamodule, ckpt_path=cfg.general.test_only)
@@ -233,3 +322,99 @@ def main(cfg: DictConfig):
 
 if __name__ == '__main__':
     main()
+
+# if __name__ == '__main__':
+#     print("Select mode:")
+#     print("1 - Training")
+#     print("2 - Inference (predict edges)")
+#     mode = input("Enter 1 or 2: ").strip()
+
+#     if mode == "1":
+#         # Launch training normally
+#         main()
+#     elif mode == "2":
+#         # Load config and run inference
+#         from omegaconf import OmegaConf
+#         import torch
+#         import os
+
+#         # Properly load Hydra configuration
+#         from hydra import compose, initialize
+#         from omegaconf import OmegaConf
+
+#         with initialize(config_path="../configs", version_base='1.3'):
+#             cfg = compose(config_name="config")
+
+#         # Create the same datamodule and model as in main(cfg)
+#         from datasets.famipacking_dataset import FamipackingGraphDataModule, FamipackingDatasetInfo
+#         from analysis.spectre_utils import FamipackingSamplingMetrics
+#         from analysis.visualization import NonMolecularVisualization
+#         from diffusion_model_discrete import DiscreteDenoisingDiffusion
+#         from diffusion.extra_features import DummyExtraFeatures
+#         from metrics.abstract_metrics import TrainAbstractMetricsDiscrete
+
+#         datamodule = FamipackingGraphDataModule(cfg)
+#         dataset_infos = FamipackingDatasetInfo(datamodule, cfg.dataset)
+#         train_metrics = TrainAbstractMetricsDiscrete()
+#         sampling_metrics = FamipackingSamplingMetrics(datamodule)
+#         visualization_tools = NonMolecularVisualization()
+#         extra_features = DummyExtraFeatures()
+#         domain_features = DummyExtraFeatures()
+
+#         dataset_infos.compute_input_output_dims(datamodule, extra_features, domain_features)
+
+#         model_kwargs = {
+#             'dataset_infos': dataset_infos,
+#             'train_metrics': train_metrics,
+#             'sampling_metrics': sampling_metrics,
+#             'visualization_tools': visualization_tools,
+#             'extra_features': extra_features,
+#             'domain_features': domain_features
+#         }
+
+#         # Load best checkpoint
+#         ckpt_path = "/home/bakirkhon/Thesis/outputs/2025-10-08/06-41-27-graph-tf-model/checkpoints/graph-tf-model/last-v1.ckpt"
+#         import torch
+#         from lightning_fabric.utilities.cloud_io import _load as pl_load
+
+#         # --- Safe load even for DDP checkpoints ---
+#         checkpoint = pl_load(ckpt_path, map_location="cpu")
+
+#         # Only extract weights; ignore trainer/DDP state
+#         state_dict = checkpoint["state_dict"] if "state_dict" in checkpoint else checkpoint
+
+#         # Rebuild model cleanly
+#         model = DiscreteDenoisingDiffusion(cfg=cfg, **model_kwargs)
+#         missing, unexpected = model.load_state_dict(state_dict, strict=False)
+
+#         if missing:
+#             print(f"⚠️ Missing keys: {missing}")
+#         if unexpected:
+#             print(f"⚠️ Unexpected keys: {unexpected}")
+
+#         model.eval()
+#         model.to("cuda" if torch.cuda.is_available() else "cpu")
+#         X_fixed = torch.tensor([[26, 27, 18],
+#                                 [24, 23,  7],
+#                                 [19, 25, 18],
+#                                 [20, 21, 12],
+#                                 [28, 29, 15],
+#                                 [20, 29, 18],
+#                                 [22, 23, 14],
+#                                 [17, 21, 19],
+#                                 [21, 24, 14],
+#                                 [17, 27, 19],
+#                                 [21, 20, 17],
+#                                 [20, 20, 15],
+#                                 [15, 22, 11],
+#                                 [15, 24,  5],
+#                                 [40, 40, 30],
+#                                 [30, 30, 30]])
+
+#         # Ensure correct shape
+#         if X_fixed.ndim == 2:
+#             X_fixed = X_fixed.unsqueeze(0)  # (1, n, d)
+
+#         model.predict_edges(X_fixed)
+#     else:
+#         print("Invalid selection. Please enter 1 or 2.")

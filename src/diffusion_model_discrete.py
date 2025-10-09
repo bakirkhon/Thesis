@@ -105,6 +105,9 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
             self.print("Found a batch with no edges. Skipping.")
             return
         dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
+        node_mask_test=node_mask.clone()
+        node_mask_test[:data.nb,:data.nb] = False
+        print("test: ", node_mask_test)
         dense_data = dense_data.mask(node_mask)
         X, E = dense_data.X, dense_data.E
         print("training_E: ", E[0])
@@ -644,7 +647,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         return self.model(X, E, y, node_mask)
 
     @torch.no_grad()
-    def predict_edges(self, X_fixed: torch.Tensor, number_chain_steps: int = 50, save_path: str = "Thsesis/predictions"):
+    def predict_edges(self, X_fixed: torch.Tensor, number_chain_steps: int = 50, save_path: str = "predictions"):
         """
         Predict edges given fixed node features X_fixed, and save X and E as NumPy arrays.
         Args:
@@ -657,7 +660,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         import os
         import numpy as np
 
-        # Ensure output directory exists
+        # Ensure output directory
         os.makedirs(save_path, exist_ok=True)
 
         # Move to correct device
@@ -681,20 +684,11 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
             E, y = sampled_s.E, sampled_s.y
 
         # ---- Convert to numpy ----
-        X_np = X_fixed.detach().cpu().numpy()
-        E_np = E.detach().cpu().numpy()
+        X = X_fixed.detach().cpu().numpy()
+        E = E.detach().cpu().numpy()
+        print("Predicted edge matrix shape:", E.shape)
+        print("Predicted edges:", E)
 
-        # ---- Save to files ----
-        np.save(os.path.join(save_path, "X_fixed.npy"), X_np)
-        np.save(os.path.join(save_path, "E_generated.npy"), E_np)
-
-        # Optional: also save readable text files
-        np.savetxt(os.path.join(save_path, "X_fixed.csv"), X_np.reshape(bs * n_max, -1), delimiter=",")
-        np.savetxt(os.path.join(save_path, "E_generated.csv"), E_np.reshape(bs * n_max, -1), delimiter=",")
-
-        print(f"Saved X_fixed and E_generated to folder: {save_path}")
-
-        return E_np
 
     # def sample_batch(self, batch_id: int, batch_size: int, keep_chain: int, number_chain_steps: int,
     #                  save_final: int, X_fixed, num_nodes=None):
@@ -825,7 +819,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         pred = self.forward(noisy_data, extra_data, node_mask)
 
         # Normalize predictions
-        pred_X = F.softmax(pred.X, dim=-1)               # bs, n, d0
+        #pred_X = F.softmax(pred.X, dim=-1)               # bs, n, d0
         pred_E = F.softmax(pred.E, dim=-1)               # bs, n, n, d0
 
         # p_s_and_t_given_0_X = diffusion_utils.compute_batched_over0_posterior_distribution(X_t=X_t,

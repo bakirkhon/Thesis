@@ -78,14 +78,14 @@ class FamipackingGraphDataset(InMemoryDataset):
         for graph in raw_dataset:
             X=graph['X']
             E=graph['E']
-            print("check: ",E[0][0])
             n=X.shape[0]
+            nb=graph['nb']
             y=torch.zeros([1, 0]).float() # empty placeholder label for each graph
-            # first row=source nodes, second row=destination rows
+            # first row=source nodes, second row=destination 
             edge_index, _=torch_geometric.utils.dense_to_sparse((E.sum(-1)>0).float())
-            print(edge_index)
+            # print(edge_index)
             edge_attr=E[edge_index[0],edge_index[1],:]
-            print(edge_attr)
+            # print(edge_attr)
             num_nodes=n*torch.ones(1,dtype=torch.long)
             data=torch_geometric.data.Data(x=X, edge_index=edge_index, edge_attr=edge_attr, y=y, n_nodes=num_nodes)
             
