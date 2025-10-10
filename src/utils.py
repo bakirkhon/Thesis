@@ -50,20 +50,20 @@ def unnormalize(X, E, y, norm_values, norm_biases, node_mask, collapse=False):
     return PlaceHolder(X=X, E=E, y=y).mask(node_mask, collapse)
 
 
-def to_dense(x, edge_index, edge_attr, batch, na):
+def to_dense(x, edge_index, edge_attr, batch):
     X, node_mask = to_dense_batch(x=x, batch=batch)
     B, N_max, _ = X.shape
 
-    # Create per-graph index grid
-    arange = torch.arange(N_max, device=X.device).unsqueeze(0).expand(B, -1)
+    # # Create per-graph index grid
+    # arange = torch.arange(N_max, device=X.device).unsqueeze(0).expand(B, -1)
 
-    # Create a mask for the first nb[i] nodes per graph
-    bin_mask = arange < na.unsqueeze(1)  # (B, N_max), True = masked node
-    node_mask_test=node_mask.clone()
-    # Update node mask and zero-out X
-    node_mask_test = node_mask_test & (~bin_mask)
-    print("node_mask_test", node_mask_test[0])
-    # node_mask = node_mask.float()
+    # # Create a mask for the first nb[i] nodes per graph
+    # bin_mask = arange < na.unsqueeze(1)  # (B, N_max), True = masked node
+    # node_mask_test=node_mask.clone()
+    # # Update node mask and zero-out X
+    # node_mask_test = node_mask_test & (~bin_mask)
+    # print("node_mask_test", node_mask_test[0])
+    # # node_mask = node_mask.float()
     edge_index, edge_attr = torch_geometric.utils.remove_self_loops(edge_index, edge_attr)
     # TODO: carefully check if setting node_mask as a bool breaks the continuous case
     max_num_nodes = X.size(1)

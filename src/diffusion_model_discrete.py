@@ -104,13 +104,13 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         if data.edge_index.numel() == 0:
             self.print("Found a batch with no edges. Skipping.")
             return
-        dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch, data.na)
+        dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
         # node_mask_test=node_mask.clone()
         # node_mask_test[:data.na,:data.na] = False
         # print("test: ", node_mask_test[0])
         dense_data = dense_data.mask(node_mask)
         X, E = dense_data.X, dense_data.E
-        print("training_E: ", E[0])
+        #print("training_E: ", E[0])
         noisy_data = self.apply_noise(X, E, data.y, node_mask)
         extra_data = self.compute_extra_data(noisy_data)
         pred = self.forward(noisy_data, extra_data, node_mask)
@@ -219,7 +219,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         dense_data, node_mask = utils.to_dense(data.x, data.edge_index, data.edge_attr, data.batch)
         dense_data = dense_data.mask(node_mask)
         X, E = dense_data.X, dense_data.E
-        print("E[0]:", E[0])
+        #print("E[0]:", E[0])
         noisy_data = self.apply_noise(dense_data.X, dense_data.E, data.y, node_mask)
         extra_data = self.compute_extra_data(noisy_data)
         pred = self.forward(noisy_data, extra_data, node_mask)
@@ -665,8 +665,7 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
 
         # Move to correct device
         X_fixed = X_fixed.to(self.device)
-        bs=1
-        n_max, _,  = X_fixed.shape
+        bs, n_max, _  = X_fixed.shape
         node_mask = torch.ones(bs, n_max, dtype=torch.bool, device=self.device) # no padded nodes
 
         # Start from pure edge noise
@@ -686,8 +685,19 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         # ---- Convert to numpy ----
         X = X_fixed.detach().cpu().numpy()
         E = E.detach().cpu().numpy()
-        print("Predicted edge matrix shape:", E.shape)
-        print("Predicted edges:", E)
+        output_file = os.path.join(save_path, "predicted_graph.pt")
+        # After saving
+        output_file = os.path.join(save_path, "predicted_graph.pt")
+        torch.save({'X': X, 'E': E}, output_file)
+
+        # Get absolute path
+        abs_path = os.path.abspath(output_file)
+        print(f"✅ Saved predicted graph to:\n{abs_path}")
+        torch.save({'X': X, 'E': E}, output_file)
+        
+        return
+        # print("Predicted edge matrix shape:", E.shape)
+        # print("Predicted edges:", E)
 
 
     # def sample_batch(self, batch_id: int, batch_size: int, keep_chain: int, number_chain_steps: int,
