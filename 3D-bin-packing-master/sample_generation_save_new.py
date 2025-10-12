@@ -5,7 +5,7 @@ import torch
 import os
 
 # Settings for data collection
-num_samples=100
+num_samples=500
 output_dir='Thesis/3D-bin-packing-master/dataset'
 os.makedirs(output_dir,exist_ok=True)
 
