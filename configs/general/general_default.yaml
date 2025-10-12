@@ -7,7 +7,7 @@ gpus: 1                     # Multi-gpu is not implemented on this branch
 
 resume: null            # If resume, path to ckpt file from outputs directory in main directory
 test_only: null #/home/bakirkhon/Thesis/outputs/2025-10-10/08-38-59-graph-tf-model/checkpoints/graph-tf-model/epoch=154.ckpt         # Use absolute path
-inference: /home/bakirkhon/Thesis/outputs/2025-10-10/08-38-59-graph-tf-model/checkpoints/graph-tf-model/epoch=154.ckpt
+inference: null
 
 check_val_every_n_epochs: 5
 sample_every_val: 4

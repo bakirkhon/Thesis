@@ -864,6 +864,49 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         # X_s = F.one_hot(sampled_s.X, num_classes=self.Xdim_output).float()
         E_s = F.one_hot(sampled_s.E, num_classes=self.Edim_output).float()
 
+        # no double bin/no-edge condition
+        if torch.all(s == 0):
+            E_s_test = E_s.clone()
+            for b in range(bs):
+                for i in range(n - 2): # (0,na)
+                    if not node_mask[b, i]:
+                        continue
+
+                    # upper-triangular columns
+                    upper_cols = range(n-2, n)
+                    best_score, best_j, best_type = -1.0, None, 0
+
+                    for j in upper_cols:
+                        if not node_mask[b, j]:
+                            continue
+                        # ignore no-edge (class 0)
+                        edge_probs = prob_E[b, i, j, 1:]
+                        #print("edge_probs: ", prob_E[b, i, j, :])
+                        max_prob = edge_probs.max().item()
+                        # print("max_prob: ", max_prob)
+                        edge_type = edge_probs.argmax().item() + 1  # +1 offset
+                        # print("edge_type: ", edge_type)
+
+                        if max_prob > best_score:
+                            best_score, best_j, best_type = max_prob, j, edge_type
+
+                        # set all upper edges to no-edge
+                        E_s_test[b, i, upper_cols, :] = 0
+                        E_s_test[b, i, upper_cols, 0] = 1  # no-edge default
+
+                        # set the strongest one
+                        if best_j is not None and best_score > 0:
+                            E_s_test[b, i, best_j, :] = 0
+                            E_s_test[b, i, best_j, best_type] = 1
+                    #print(E_s_test[b,i,:,:]) 
+            
+            # symmetrize at the end of last step
+            triu_mask = torch.triu(torch.ones((n, n), device=E_s_test.device), diagonal=1).bool()
+            E_s_test = E_s_test * triu_mask.unsqueeze(0).unsqueeze(-1)
+            E_s_test = E_s_test + E_s_test.transpose(1, 2)
+            # print("E_s_test: ", E_s_test[0])
+            E_s = E_s_test
+
         assert (E_s == torch.transpose(E_s, 1, 2)).all()
         assert (X_t.shape == X_s.shape) and (E_t.shape == E_s.shape)
 

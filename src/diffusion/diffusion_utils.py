@@ -264,7 +264,6 @@ def sample_discrete_features(probX, probE, node_mask):
     probE[diag_mask.bool()] = 1 / probE.shape[-1]
 
     probE = probE.reshape(bs * n * n, -1)    # (bs * n * n, de_out)
-
     # Sample E
     E_t = probE.multinomial(1).reshape(bs, n, n)   # (bs, n, n)
     E_t = torch.triu(E_t, diagonal=1)

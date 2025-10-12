@@ -5,7 +5,7 @@ import torch
 import os
 
 # Settings for data collection
-num_samples=100
+num_samples=1000
 output_dir='Thesis/3D-bin-packing-master/dataset'
 os.makedirs(output_dir,exist_ok=True)
 
@@ -190,7 +190,8 @@ while valid_count<num_samples and attempts<max_attempts:
 
     # Generation of edge set E
     n=Va.shape[0]+Vb.shape[0]
-    E=np.zeros((n,n,max(num_small,num_medium,num_large)))
+    E=np.zeros((n,n,max(num_small,num_medium,num_large)+1))
+    E[:, :, 0] = 1   # assume initially all pairs have no edge
 
     # Create map of bin size categories and index of each bin in that category
     b_sizes={
@@ -212,10 +213,6 @@ while valid_count<num_samples and attempts<max_attempts:
     bin_size_to_vb_index={tuple(dim):i for i, dim in enumerate(Vb)}
 
     # Fill E
-    E = np.zeros((n, n, 4))
-    E[:, :, 0] = 1   # assume initially all pairs have no edge
-    
-
     for bin_category, bin_indices in bin_size_map.items():
         for local_idx, bin_global_index in enumerate(bin_indices):
             b = bins[bin_global_index]
