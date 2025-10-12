@@ -14,7 +14,7 @@ class FamipackingGraphDataset(InMemoryDataset):
         self.famipacking_file='famipacking.pt' 
         self.dataset_name=dataset_name
         self.split=split
-        self.num_graphs=1000
+        self.num_graphs=100
         super().__init__(root, transform, pre_transform, pre_filter)
         self.data, self.slices=torch.load(self.processed_paths[0])
 
@@ -102,7 +102,7 @@ class FamipackingGraphDataset(InMemoryDataset):
 
 # creates DataModule object that wraps three datasets
 class FamipackingGraphDataModule(AbstractDataModule):
-    def __init__(self, cfg, n_graphs=1000):
+    def __init__(self, cfg, n_graphs=100):
         self.cfg=cfg
         self.datadir=cfg.dataset.datadir
 
