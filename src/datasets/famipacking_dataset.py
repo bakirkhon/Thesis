@@ -14,7 +14,7 @@ class FamipackingGraphDataset(InMemoryDataset):
         self.famipacking_file='famipacking.pt' 
         self.dataset_name=dataset_name
         self.split=split
-        self.num_graphs=100
+        self.num_graphs=1000
         super().__init__(root, transform, pre_transform, pre_filter)
         self.data, self.slices=torch.load(self.processed_paths[0])
 
@@ -81,7 +81,8 @@ class FamipackingGraphDataset(InMemoryDataset):
             E=graph['E']
             n=X.shape[0]
             na=graph['na']
-            y=na #torch.zeros([1, 0]).float() # empty placeholder label for each graph
+            y=na*torch.ones(1,dtype=torch.int) #torch.zeros([1, 0]).float() # empty placeholder label for each graph
+            y=y.unsqueeze(-1)
             # first row=source nodes, second row=destination 
             edge_index, _=torch_geometric.utils.dense_to_sparse((E.sum(-1)>0).float())
             # print(edge_index)
@@ -101,7 +102,7 @@ class FamipackingGraphDataset(InMemoryDataset):
 
 # creates DataModule object that wraps three datasets
 class FamipackingGraphDataModule(AbstractDataModule):
-    def __init__(self, cfg, n_graphs=100):
+    def __init__(self, cfg, n_graphs=1000):
         self.cfg=cfg
         self.datadir=cfg.dataset.datadir
 
