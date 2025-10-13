@@ -5,7 +5,7 @@ import torch
 import os
 
 # Settings for data collection
-num_samples=500
+num_samples=1000
 output_dir='Thesis/3D-bin-packing-master/dataset'
 os.makedirs(output_dir,exist_ok=True)
 
@@ -49,8 +49,8 @@ def generate_random_bins(num_small, num_medium, num_large):
 def generate_random_items(num_items):
     items=[]
     for i in range(num_items):
-        width = np.random.randint(15,30)
-        height = np.random.randint(20,30)
+        width = np.random.randint(15,25)
+        height = np.random.randint(20,25)
         depth = np.random.randint(5,20)
         size = [width, height, depth]
         size=[int(s) for s in size]
@@ -79,11 +79,11 @@ while valid_count<num_samples and attempts<max_attempts:
     attempts+=1
     packer=Packer()
 
-    num_small=3 #int(np.random.randint(1,4))
-    num_medium=3 #int(np.random.randint(1,4))
+    num_small=1 #int(np.random.randint(1,4))
+    num_medium=2 #int(np.random.randint(1,4))
     num_large=0 #int(np.random.randint(1,3)) 
     bins=generate_random_bins(num_small, num_medium, num_large)
-    num_items=int(np.random.randint(10,20))
+    num_items=10 #int(np.random.randint(10,20))
     items=generate_random_items(num_items)
     # for b in bins:
     #     print(f"Bin: {b.partno}")
@@ -111,8 +111,38 @@ while valid_count<num_samples and attempts<max_attempts:
 
     packer.putOrder()
 
+    b=packer.bins[1]
+    volume = b.width * b.height * b.depth
+    volume_t = 0
+    for item in b.items:
+        volume_t += float(item.width) * float(item.height) * float(item.depth)
+    space_utilization = round(volume_t / float(volume) * 100, 2)
+
+    repacked = False
+    if space_utilization <= 40 and len(packer.bins[2].items) == 0:
+        print("entered if")
+        num_small=1 #int(np.random.randint(1,4))
+        num_medium=1 #int(np.random.randint(1,4))
+        bins=generate_random_bins(num_small, num_medium, num_large)
+        packer_small = Packer()
+        for b in bins:
+            packer_small.addBin(b)
+        for item in items:
+            packer_small.addItem(item)
+        packer_small.pack(
+        bigger_first=True, # pack into bigger boxes first
+        distribute_items=True,
+        fix_point=True,
+        check_stable=False,
+        support_surface_ratio=0.5,
+        number_of_decimals=0)
+
+        packer_small.putOrder()
+        repacked = True
+
+    target_packer = packer_small if repacked else packer    
     # Skip if not fully packed
-    if len(packer.unfit_items)>0:
+    if len(target_packer.unfit_items)>0:
         continue
     # # print result
     # print("***************************************************")
@@ -190,7 +220,7 @@ while valid_count<num_samples and attempts<max_attempts:
 
     # Generation of edge set E
     n=Va.shape[0]+Vb.shape[0]
-    E=np.zeros((n,n,max(num_small,num_medium,num_large)+1))
+    E=np.zeros((n,n,3))
     E[:, :, 0] = 1   # assume initially all pairs have no edge
 
     # Create map of bin size categories and index of each bin in that category
