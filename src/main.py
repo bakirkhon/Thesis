@@ -205,22 +205,18 @@ def main(cfg: DictConfig):
         cfg, model = get_resume_inference(cfg, model_kwargs)
         os.chdir(cfg.general.inference.split('checkpoints')[0])
         print("Running inference mode (predict_edges)...")
-        X_fixed = torch.tensor([[26, 27, 18],
-                            [24, 23,  7],
-                            [19, 25, 18],
-                            [20, 21, 12],
-                            [28, 29, 15],
-                            [20, 29, 18],
-                            [22, 23, 14],
-                            [17, 21, 19],
-                            [21, 24, 14],
-                            [17, 27, 19],
-                            [21, 20, 17],
-                            [20, 20, 15],
-                            [15, 22, 11],
-                            [15, 24,  5],
-                            [40, 40, 30],
-                            [30, 30, 30]])
+        X_fixed = torch.tensor([[15, 21,  6],
+                                [21, 23, 11],
+                                [18, 20, 17],
+                                [15, 22, 19],
+                                [16, 24, 17],
+                                [19, 23,  9],
+                                [15, 20, 19],
+                                [22, 24, 11],
+                                [17, 20, 19],
+                                [22, 20,  9],
+                                [40, 40, 30],
+                                [30, 30, 30]])
 
         if X_fixed.ndim == 2:
             X_fixed = X_fixed.unsqueeze(0)
