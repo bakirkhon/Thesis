@@ -201,30 +201,63 @@ def main(cfg: DictConfig):
         cfg, _ = get_resume_adaptive(cfg, model_kwargs)
         os.chdir(cfg.general.resume.split('checkpoints')[0])
     elif cfg.general.inference:
-        # Load checkpoint for inference
+        # Inference mode
         cfg, model = get_resume_inference(cfg, model_kwargs)
         os.chdir(cfg.general.inference.split('checkpoints')[0])
+
         print("Running inference mode (predict_edges)...")
-        X_fixed = torch.tensor([[15, 21,  6],
-                                [21, 23, 11],
-                                [18, 20, 17],
-                                [15, 22, 19],
-                                [16, 24, 17],
-                                [19, 23,  9],
-                                [15, 20, 19],
-                                [22, 24, 11],
-                                [17, 20, 19],
-                                [22, 20,  9],
-                                [40, 40, 30],
-                                [30, 30, 30]])
+        # Load inference dataset
+        inference_path = "/home/bakirkhon/Thesis/3D-bin-packing-master/dataset/inference_dataset_small.pt"
+        assert os.path.exists(inference_path), f"File not found: {inference_path}"
+        all_graphs = torch.load(inference_path)
+        print(f"Loaded {len(all_graphs)} graphs from inference dataset.")
 
-        if X_fixed.ndim == 2:
-            X_fixed = X_fixed.unsqueeze(0)
-
+        # Prepare model
         model.eval()
-        model.to("cpu")
-        model.predict_edges(X_fixed)
-        return  # Exit after inference    
+        device = "cpu"
+        model.to(device)
+
+        predictions = []
+
+        # Inference loop
+        for idx, graph in enumerate(all_graphs):
+            X = torch.tensor(graph["X"], dtype=torch.float32).unsqueeze(0).to(device)
+            print(f"Processing graph {idx + 1}/{len(all_graphs)} | X shape: {X.shape}")
+
+            E_pred = model.predict_edges(X)  # returns E tensor
+            predictions.append({"X": graph["X"], "E": E_pred.cpu().numpy()})
+
+        # Save predictions
+        output_file = "/home/bakirkhon/Thesis/outputs/2025-10-14/06-44-43-graph-tf-model/predictions/inference_predictions.pt"
+        torch.save(predictions, output_file)
+        print(f"✅ Saved predictions for {len(predictions)} graphs to:\n{os.path.abspath(output_file)}")
+
+        return  # Exit after inference
+    # elif cfg.general.inference:
+    #     # Load checkpoint for inference
+    #     cfg, model = get_resume_inference(cfg, model_kwargs)
+    #     os.chdir(cfg.general.inference.split('checkpoints')[0])
+    #     print("Running inference mode (predict_edges)...")
+    #     X_fixed = torch.tensor([[15, 21,  6],
+    #                             [21, 23, 11],
+    #                             [18, 20, 17],
+    #                             [15, 22, 19],
+    #                             [16, 24, 17],
+    #                             [19, 23,  9],
+    #                             [15, 20, 19],
+    #                             [22, 24, 11],
+    #                             [17, 20, 19],
+    #                             [22, 20,  9],
+    #                             [40, 40, 30],
+    #                             [30, 30, 30]])
+
+    #     if X_fixed.ndim == 2:
+    #         X_fixed = X_fixed.unsqueeze(0)
+
+    #     model.eval()
+    #     model.to("cpu")
+    #     model.predict_edges(X_fixed)
+    #     return  # Exit after inference    
 
 
 

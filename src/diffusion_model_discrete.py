@@ -170,14 +170,14 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
                 all_true_E.append(E.cpu())
 
         # Save as a list — no concatenation
-        os.makedirs("content/outputs/final_predictions", exist_ok=True)
+        os.makedirs("train_predictions", exist_ok=True)
         torch.save({
             "predicted_E": all_pred_E,  # list of tensors, each (n_i, n_i, num_edge_classes)
             "true_E": all_true_E
-        }, "content/outputs/final_predictions/train_set_E_predictions.pt")
+        }, "train_predictions/train_set_E_predictions.pt")
 
         self.print(f"Saved {len(all_pred_E)} edge predictions for training set "
-                f"to content/outputs/final_predictions/train_set_E_predictions.pt")
+                f"to train_predictions/train_set_E_predictions.pt")
 
 
     # Reset metrics and start the epoch timer before def training_step
@@ -645,31 +645,25 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
         E = torch.cat((noisy_data['E_t'], extra_data.E), dim=3).float()
         y = torch.hstack((noisy_data['y_t'], extra_data.y)).float()
         return self.model(X, E, y, node_mask)
-
     @torch.no_grad()
-    def predict_edges(self, X_fixed: torch.Tensor, number_chain_steps: int = 50, save_path: str = "predictions"):
+    def predict_edges(self, X_fixed: torch.Tensor, number_chain_steps: int = 50):
         """
-        Predict edges given fixed node features X_fixed, and save X and E as NumPy arrays.
+        Predict edges given fixed node features X_fixed.
         Args:
-            X_fixed: (n, dx) tensor of node features.
-            number_chain_steps: number of reverse diffusion steps.
-            save_path: folder to save .npy files.
+            X_fixed: (1, n, dx) tensor of node features.
         Returns:
-            E_pred: predicted adjacency tensors (bs, n, n, de)
+            E_pred: predicted adjacency tensor (1, n, n, de)
         """
-        import os
-        import numpy as np
+        import torch
 
-        # Ensure output directory
-        os.makedirs(save_path, exist_ok=True)
-
-        # Move to correct device
         X_fixed = X_fixed.to(self.device)
-        bs, n_max, _  = X_fixed.shape
-        node_mask = torch.ones(bs, n_max, dtype=torch.bool, device=self.device) # no padded nodes
+        bs, n_max, _ = X_fixed.shape
+        node_mask = torch.ones(bs, n_max, dtype=torch.bool, device=self.device)
 
         # Start from pure edge noise
-        z_T = diffusion_utils.sample_discrete_feature_noise(limit_dist=self.limit_dist, node_mask=node_mask)
+        z_T = diffusion_utils.sample_discrete_feature_noise(
+            limit_dist=self.limit_dist, node_mask=node_mask
+        )
         E, y = z_T.E, z_T.y
 
         # Reverse diffusion process
@@ -682,20 +676,59 @@ class DiscreteDenoisingDiffusion(pl.LightningModule):
             sampled_s, _ = self.sample_p_zs_given_zt(s_norm, t_norm, X_fixed, E, y, node_mask)
             E, y = sampled_s.E, sampled_s.y
 
-        # ---- Convert to numpy ----
-        X = X_fixed.detach().cpu().numpy()
-        E = E.detach().cpu().numpy()
-        output_file = os.path.join(save_path, "predicted_graph.pt")
-        # After saving
-        output_file = os.path.join(save_path, "predicted_graph.pt")
-        torch.save({'X': X, 'E': E}, output_file)
+        # Return the predicted edge tensor
+        return E.detach().cpu()
 
-        # Get absolute path
-        abs_path = os.path.abspath(output_file)
-        print(f"✅ Saved predicted graph to:\n{abs_path}")
-        torch.save({'X': X, 'E': E}, output_file)
+    # @torch.no_grad()
+    # def predict_edges(self, X_fixed: torch.Tensor, number_chain_steps: int = 50, save_path: str = "predictions"):
+    #     """
+    #     Predict edges given fixed node features X_fixed, and save X and E as NumPy arrays.
+    #     Args:
+    #         X_fixed: (n, dx) tensor of node features.
+    #         number_chain_steps: number of reverse diffusion steps.
+    #         save_path: folder to save .npy files.
+    #     Returns:
+    #         E_pred: predicted adjacency tensors (bs, n, n, de)
+    #     """
+    #     import os
+    #     import numpy as np
+
+    #     # Ensure output directory
+    #     os.makedirs(save_path, exist_ok=True)
+
+    #     # Move to correct device
+    #     X_fixed = X_fixed.to(self.device)
+    #     bs, n_max, _  = X_fixed.shape
+    #     node_mask = torch.ones(bs, n_max, dtype=torch.bool, device=self.device) # no padded nodes
+
+    #     # Start from pure edge noise
+    #     z_T = diffusion_utils.sample_discrete_feature_noise(limit_dist=self.limit_dist, node_mask=node_mask)
+    #     E, y = z_T.E, z_T.y
+
+    #     # Reverse diffusion process
+    #     for s_int in reversed(range(0, self.T)):
+    #         s_array = s_int * torch.ones((bs, 1), device=self.device)
+    #         t_array = s_array + 1
+    #         s_norm = s_array / self.T
+    #         t_norm = t_array / self.T
+
+    #         sampled_s, _ = self.sample_p_zs_given_zt(s_norm, t_norm, X_fixed, E, y, node_mask)
+    #         E, y = sampled_s.E, sampled_s.y
+
+    #     # ---- Convert to numpy ----
+    #     X = X_fixed.detach().cpu().numpy()
+    #     E = E.detach().cpu().numpy()
+    #     output_file = os.path.join(save_path, "predicted_graph.pt")
+    #     # After saving
+    #     output_file = os.path.join(save_path, "predicted_graph.pt")
+    #     torch.save({'X': X, 'E': E}, output_file)
+
+    #     # Get absolute path
+    #     abs_path = os.path.abspath(output_file)
+    #     print(f"Saved predicted graph to:\n{abs_path}")
+    #     torch.save({'X': X, 'E': E}, output_file)
         
-        return
+    #     return
         # print("Predicted edge matrix shape:", E.shape)
         # print("Predicted edges:", E)
 

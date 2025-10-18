@@ -277,12 +277,12 @@ while valid_count<num_samples and attempts<max_attempts:
     # Save sample
     dataset.append({
         'X': V,
-        'E': E,
+        #'E': E,
         'na': len(Va)
     })
     np_dataset.append({
         'X': V,
-        'E': E,
+        #'E': E,
         'na': len(Va)
     })
 
@@ -291,7 +291,7 @@ while valid_count<num_samples and attempts<max_attempts:
     # for i,row in enumerate(E):
     #     print(f'Row {i}: {row}')
 
-torch.save(dataset, 'Thesis/3D-bin-packing-master/dataset/training_dataset_small.pt')               
-np.savez_compressed('Thesis/3D-bin-packing-master/dataset/training_dataset_small.npz', data=np.array(np_dataset, dtype=object))
+torch.save(dataset, 'Thesis/3D-bin-packing-master/dataset/inference_dataset_small.pt')               
+np.savez_compressed('Thesis/3D-bin-packing-master/dataset/inference_dataset_small.npz', data=np.array(np_dataset, dtype=object))
 
 print('Done')
