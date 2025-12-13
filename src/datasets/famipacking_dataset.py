@@ -82,7 +82,6 @@ class FamipackingGraphDataset(InMemoryDataset):
             n=X.shape[0]
             na=graph['na']
             y=torch.zeros([1, 0]).float() # empty placeholder label for each graph# na*torch.ones(1,dtype=torch.int) #
-            #y=y.unsqueeze(-1)
             # first row=source nodes, second row=destination 
             edge_index, _=torch_geometric.utils.dense_to_sparse((E.sum(-1)>0).float())
             # print(edge_index)

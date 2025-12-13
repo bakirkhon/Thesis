@@ -54,25 +54,13 @@ def to_dense(x, edge_index, edge_attr, batch):
     X, node_mask = to_dense_batch(x=x, batch=batch)
     B, N_max, _ = X.shape
 
-    # # Create per-graph index grid
-    # arange = torch.arange(N_max, device=X.device).unsqueeze(0).expand(B, -1)
 
-    # # Create a mask for the first nb[i] nodes per graph
-    # bin_mask = arange < na.unsqueeze(1)  # (B, N_max), True = masked node
-    # node_mask_test=node_mask.clone()
-    # # Update node mask and zero-out X
-    # node_mask_test = node_mask_test & (~bin_mask)
-    # print("node_mask_test", node_mask_test[0])
-    # # node_mask = node_mask.float()
     edge_index, edge_attr = torch_geometric.utils.remove_self_loops(edge_index, edge_attr)
     # TODO: carefully check if setting node_mask as a bool breaks the continuous case
     max_num_nodes = X.size(1)
-    # print(edge_index[0:1])
-    # print(edge_attr[0])
     E = to_dense_adj(edge_index=edge_index, batch=batch, edge_attr=edge_attr, max_num_nodes=max_num_nodes)
-    # print("to dense: ", E[0][0])
     E = encode_no_edge(E)
-    # print("encode: ", E[0][-1])
+
 
     return PlaceHolder(X=X, E=E, y=None), node_mask
 

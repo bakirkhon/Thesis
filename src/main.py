@@ -92,10 +92,6 @@ def get_resume_inference(cfg, model_kwargs):
 
 @hydra.main(version_base='1.3', config_path='../configs', config_name='config')
 def main(cfg: DictConfig):
-    # print("Select mode:")
-    # print("1 - Training")
-    # print("2 - Inference (predict edges)")
-    # mode = input("Enter 1 or 2: ").strip()
 
     dataset_config = cfg["dataset"] # load dataset name from config file
 
@@ -139,56 +135,7 @@ def main(cfg: DictConfig):
         model_kwargs = {'dataset_infos': dataset_infos, 'train_metrics': train_metrics,
                         'sampling_metrics': sampling_metrics, 'visualization_tools': visualization_tools,
                         'extra_features': extra_features, 'domain_features': domain_features}
-
-    # not relevant
-    # elif dataset_config["name"] in ['qm9', 'guacamol', 'moses']:
-    #     from metrics.molecular_metrics import TrainMolecularMetrics, SamplingMolecularMetrics
-    #     from metrics.molecular_metrics_discrete import TrainMolecularMetricsDiscrete
-    #     from diffusion.extra_features_molecular import ExtraMolecularFeatures
-    #     from analysis.visualization import MolecularVisualization
-
-    #     if dataset_config["name"] == 'qm9':
-    #         from datasets import qm9_dataset
-    #         datamodule = qm9_dataset.QM9DataModule(cfg)
-    #         dataset_infos = qm9_dataset.QM9infos(datamodule=datamodule, cfg=cfg)
-    #         train_smiles = qm9_dataset.get_train_smiles(cfg=cfg, train_dataloader=datamodule.train_dataloader(),
-    #                                                     dataset_infos=dataset_infos, evaluate_dataset=False)
-    #     elif dataset_config['name'] == 'guacamol':
-    #         from datasets import guacamol_dataset
-    #         datamodule = guacamol_dataset.GuacamolDataModule(cfg)
-    #         dataset_infos = guacamol_dataset.Guacamolinfos(datamodule, cfg)
-    #         train_smiles = None
-
-    #     elif dataset_config.name == 'moses':
-    #         from datasets import moses_dataset
-    #         datamodule = moses_dataset.MosesDataModule(cfg)
-    #         dataset_infos = moses_dataset.MOSESinfos(datamodule, cfg)
-    #         train_smiles = None
-    #     else:
-    #         raise ValueError("Dataset not implemented")
-
-        # if cfg.model.type == 'discrete' and cfg.model.extra_features is not None:
-        #     extra_features = ExtraFeatures(cfg.model.extra_features, dataset_info=dataset_infos)
-        #     # domain_features = ExtraMolecularFeatures(dataset_infos=dataset_infos)
-        # else:
-        #     extra_features = DummyExtraFeatures()
-        #     domain_features = DummyExtraFeatures()
-
-        # dataset_infos.compute_input_output_dims(datamodule=datamodule, extra_features=extra_features,
-        #                                         domain_features=domain_features)
-
-        # if cfg.model.type == 'discrete':
-        #     train_metrics = TrainMolecularMetricsDiscrete(dataset_infos)
-        # else:
-        #     train_metrics = TrainMolecularMetrics(dataset_infos)
-
-        # # We do not evaluate novelty during training
-        # sampling_metrics = SamplingMolecularMetrics(dataset_infos, train_smiles)
-        # visualization_tools = MolecularVisualization(cfg.dataset.remove_h, dataset_infos=dataset_infos)
-
-        # model_kwargs = {'dataset_infos': dataset_infos, 'train_metrics': train_metrics,
-        #                 'sampling_metrics': sampling_metrics, 'visualization_tools': visualization_tools,
-        #                 'extra_features': extra_features, 'domain_features': domain_features}
+    
     else:
         raise NotImplementedError("Unknown dataset {}".format(cfg["dataset"]))
 
@@ -233,34 +180,7 @@ def main(cfg: DictConfig):
         print(f"✅ Saved predictions for {len(predictions)} graphs to:\n{os.path.abspath(output_file)}")
 
         return  # Exit after inference
-    # elif cfg.general.inference:
-    #     # Load checkpoint for inference
-    #     cfg, model = get_resume_inference(cfg, model_kwargs)
-    #     os.chdir(cfg.general.inference.split('checkpoints')[0])
-    #     print("Running inference mode (predict_edges)...")
-    #     X_fixed = torch.tensor([[15, 21,  6],
-    #                             [21, 23, 11],
-    #                             [18, 20, 17],
-    #                             [15, 22, 19],
-    #                             [16, 24, 17],
-    #                             [19, 23,  9],
-    #                             [15, 20, 19],
-    #                             [22, 24, 11],
-    #                             [17, 20, 19],
-    #                             [22, 20,  9],
-    #                             [40, 40, 30],
-    #                             [30, 30, 30]])
-
-    #     if X_fixed.ndim == 2:
-    #         X_fixed = X_fixed.unsqueeze(0)
-
-    #     model.eval()
-    #     model.to("cpu")
-    #     model.predict_edges(X_fixed)
-    #     return  # Exit after inference    
-
-
-
+    
     utils.create_folders(cfg)
 
     if cfg.model.type == 'discrete':
